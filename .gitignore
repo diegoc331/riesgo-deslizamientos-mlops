@@ -1,0 +1,22 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Datos descargados
+data/raw/
+data/processed/
+
+# MLflow y notebooks
+mlruns/
+.ipynb_checkpoints/
+*.db
+
+# Variables de entorno (credenciales, API keys)
+.env

@@ -1,0 +1,17 @@
+[project]
+name = "riesgo-deslizamientos-mlops"
+version = "0.1.0"
+description = "Experimento de correlacion precipitacion-deslizamientos Colombia"
+requires-python = ">=3.11"
+dependencies = [
+    "pandas>=2.0",
+    "numpy>=1.26",
+    "requests>=2.31",
+    "matplotlib>=3.8",
+    "seaborn>=0.13",
+    "scipy>=1.11",
+    "scikit-learn>=1.4",
+    "jupyter>=1.0",
+    "ipykernel>=6.0",
+    "nbformat>=5.9",
+]
