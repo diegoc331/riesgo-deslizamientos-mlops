@@ -1,9 +1,10 @@
 # =============================================================================
 # Configuración de alcance — Antioquia Deslizamientos
-# Experimento: predicción multiclase de riesgo de deslizamiento
+# Experimento: clasificación binaria de ocurrencia de deslizamiento
 #
+# Cambio v2.0.0: de multiclase (bajo/medio/alto) a binario (ocurre / no ocurre)
 # Este archivo es la única fuente de verdad para parámetros de negocio.
-# Todo cambio aquí se debe versiona en Git y se registra en MLflow automáticamente.
+# Todo cambio aquí se versiona en Git y se registra en MLflow automáticamente.
 # =============================================================================
 
 # ---------------------------------------------------------------------------
@@ -11,8 +12,6 @@
 # ---------------------------------------------------------------------------
 geo:
   departamento: "antioquia"          # normalizado: minúsculas sin tildes
-  # Si en el futuro se amplía a más departamentos, esta clave se convierte
-  # en lista: [antioquia, choco, caldas]
 
 # ---------------------------------------------------------------------------
 # Alcance temporal
@@ -28,7 +27,7 @@ fuentes:
   ideam:
     dataset_id: "s54a-sgyg"
     descripcion: "Precipitación IDEAM — sensores automáticos (mm)"
-    limit_por_mes: 5000              # registros máx por llamada mensual
+    limit_por_mes: 5000
 
   ungrd:
     dataset_id: "wwkg-r6te"
@@ -36,17 +35,15 @@ fuentes:
     max_records: 30000
 
   siata:
-    # SIATA no expone API pública — requiere descarga manual del portal
-    # https://siata.gov.co (sección Portal de descargas)
     csv_path: "data/raw/siata_precipitacion.csv"
-    activo: false                    # cambiar a true cuando el CSV esté disponible
+    activo: false
     descripcion: "Estaciones pluviométricas SIATA — Valle de Aburrá y Antioquia"
 
 # ---------------------------------------------------------------------------
 # Filtros de eventos (UNGRD)
+# Taxonomía conforme a Ley 1523 de 2012 (Gestión del Riesgo, Colombia)
 # ---------------------------------------------------------------------------
 eventos:
-  # Palabras clave para TODOS los eventos hidrometeorológicos (Notebook 00)
   hidro_keywords:
     - "avenida torrencial"
     - "creciente subita"
@@ -56,7 +53,6 @@ eventos:
     - "movimiento en masa"
     - "flujo de lodo"
 
-  # Palabras clave EXCLUSIVAS de remoción en masa (Notebook 01 en adelante)
   landslide_keywords:
     - "deslizamiento"
     - "derrumbe"
@@ -67,60 +63,51 @@ eventos:
     - "reptacion"
 
 # ---------------------------------------------------------------------------
-# Target multiclase
-# Criterio de clasificación de riesgo mensual por número de eventos
-# Revisable con criterio experto (DAGRD / DAPARD Antioquia)
+# Target binario
+# 0 = no ocurre ningún deslizamiento en el mes
+# 1 = ocurre al menos un deslizamiento en el mes
+#
+# Ventaja sobre multiclase: no requiere umbrales arbitrarios.
+# Métrica principal: AUC-ROC + Recall de clase positiva (costo asimétrico:
+# es peor no detectar un deslizamiento real que generar una falsa alarma).
 # ---------------------------------------------------------------------------
 target:
-  nombre: "riesgo"
-  clases:
-    bajo:
-      id: 0
-      descripcion: "Sin deslizamientos en el mes"
-      condicion: "n_deslizamientos == 0"
-    medio:
-      id: 1
-      descripcion: "1 o 2 deslizamientos"
-      condicion: "1 <= n_deslizamientos < 3"
-    alto:
-      id: 2
-      descripcion: "3 o más deslizamientos"
-      condicion: "n_deslizamientos >= 3"
-  umbral_medio: 1                    # n_deslizamientos >= umbral_medio → clase 1
-  umbral_alto: 3                     # n_deslizamientos >= umbral_alto  → clase 2
+  nombre: "deslizamiento"
+  tipo: "binario"
+  clase_positiva: 1
+  clase_positiva_desc: "Ocurre al menos un deslizamiento en el mes"
+  clase_negativa: 0
+  clase_negativa_desc: "No ocurre ningún deslizamiento en el mes"
+  # Peso de clase para manejar desbalance en el modelo
+  # "balanced" = sklearn calcula los pesos automáticamente
+  class_weight: "balanced"
 
 # ---------------------------------------------------------------------------
 # Feature engineering
 # ---------------------------------------------------------------------------
 features:
-  # Features base (precipitación del mes actual — NO usan shift)
   base:
     - "precip_suma"
     - "precip_max"
     - "precip_media"
     - "precip_dias"
-    - "n_estaciones"                 # proxy de cobertura de sensores
+    - "n_estaciones"
 
-  # Features rezagadas (usan shift para evitar data leakage)
   lagged:
-    - "precip_lag1"                  # precipitación mes anterior
-    - "precip_acum3m"                # acumulado 3 meses
-    - "precip_acum6m"                # acumulado 6 meses
-    - "precip_max3m"                 # máximo mensual en 3 meses
-    - "precip_dias3m"                # días con lluvia en 3 meses
+    - "precip_lag1"
+    - "precip_acum3m"
+    - "precip_acum6m"
+    - "precip_max3m"
+    - "precip_dias3m"
 
-  # Features de estacionalidad (encoding cíclico del mes)
   seasonality:
     - "mes_sin"
     - "mes_cos"
 
-  # Features SIATA (solo activas si fuentes.siata.activo == true)
   siata:
     - "siata_precip_suma"
     - "siata_precip_max"
 
-  # Features mínimas requeridas para que una fila sea válida
-  # (se usarán en el dropna del pipeline)
   required_for_model:
     - "precip_lag1"
     - "precip_acum3m"
@@ -129,11 +116,7 @@ features:
 # Calidad de datos
 # ---------------------------------------------------------------------------
 calidad:
-  # Umbral de cobertura mínima de sensores por mes
-  # Meses por debajo de este percentil se marcan como baja cobertura
   cobertura_sensor_percentil: 25
-
-  # Rango válido de precipitación (mm/día)
   precip_min_mm: 0
   precip_max_mm: 500
 
@@ -141,9 +124,10 @@ calidad:
 # MLflow
 # ---------------------------------------------------------------------------
 mlflow:
-  experiment_name: "antioquia_deslizamientos"
-  db_path: "mlruns/mlflow.db"        # relativo al project root
+  experiment_name: "antioquia_deslizamientos_binario"
+  db_path: "mlruns/mlflow.db"
   run_tags:
     proyecto: "blindaje_territorio"
-    equipo: "grupo_proyectoII"
-    version_config: "1.0.0"
+    equipo: "grupo_mlops"
+    version_config: "2.0.0"
+    tipo_problema: "clasificacion_binaria"
