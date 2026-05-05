@@ -4,13 +4,16 @@ Carga y validación de configuración de experimentos.
 Uso típico (en notebook o script):
     from experiment.config import load_config
 
-    cfg = load_config()                          # busca el YAML por convención
-    cfg = load_config("configs/otro.yaml")       # ruta explícita
+    cfg = load_config()
+    print(cfg.geo.departamento)            # "antioquia"
+    print(cfg.target.class_weight)         # "balanced"
+    print(cfg.all_features)               # lista completa según fuentes activas
+    mlflow.log_params(cfg.as_mlflow_params())
 
-    print(cfg.geo.departamento)                  # "antioquia"
-    print(cfg.target.umbral_alto)                # 3
-    print(cfg.all_features)                      # lista completa según fuentes activas
-    mlflow.log_params(cfg.as_mlflow_params())    # dict plano listo para MLflow
+Cambios v2.0.0:
+    - TargetConfig simplificado: de multiclase a binario
+    - Eliminados ClaseConfig, ClasesConfig, umbral_medio, umbral_alto
+    - Agregados class_weight y descriptores de clase positiva/negativa
 """
 
 from __future__ import annotations
@@ -19,7 +22,7 @@ from pathlib import Path
 from typing import Optional
 
 import yaml
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -31,7 +34,6 @@ class GeoConfig(BaseModel):
 
     @model_validator(mode="after")
     def normalize(self) -> "GeoConfig":
-        """Garantiza minúsculas sin espacios extra."""
         self.departamento = self.departamento.strip().lower()
         return self
 
@@ -78,31 +80,24 @@ class EventosConfig(BaseModel):
     landslide_keywords: list[str]
 
 
-class ClaseConfig(BaseModel):
-    id: int
-    descripcion: str
-    condicion: str
-
-
-class ClasesConfig(BaseModel):
-    bajo: ClaseConfig
-    medio: ClaseConfig
-    alto: ClaseConfig
-
-
 class TargetConfig(BaseModel):
-    nombre: str = "riesgo"
-    clases: ClasesConfig
-    umbral_medio: int = Field(ge=1)
-    umbral_alto: int = Field(ge=2)
+    """
+    Configuración del target binario.
 
-    @model_validator(mode="after")
-    def check_umbrales(self) -> "TargetConfig":
-        if self.umbral_medio >= self.umbral_alto:
-            raise ValueError(
-                f"umbral_medio ({self.umbral_medio}) debe ser < umbral_alto ({self.umbral_alto})"
-            )
-        return self
+    - 0: no ocurrió ningún deslizamiento ese mes
+    - 1: ocurrió al menos uno
+
+    class_weight="balanced" delega el manejo del desbalance de clases
+    a sklearn, que calcula los pesos proporcionalmente a la frecuencia
+    inversa de cada clase en los datos de entrenamiento.
+    """
+    nombre: str = "deslizamiento"
+    tipo: str = "binario"
+    clase_positiva: int = 1
+    clase_positiva_desc: str = ""
+    clase_negativa: int = 0
+    clase_negativa_desc: str = ""
+    class_weight: str = "balanced"
 
 
 class FeaturesConfig(BaseModel):
@@ -141,11 +136,10 @@ class ExperimentConfig(BaseModel):
     calidad: CalidadConfig
     mlflow: MLflowConfig
 
-    # El project_root se inyecta en load_config(), no viene del YAML
     _project_root: Optional[Path] = None
 
     # ------------------------------------------------------------------
-    # Propiedades derivadas (evitan lógica duplicada en notebooks)
+    # Propiedades derivadas
     # ------------------------------------------------------------------
 
     @property
@@ -157,11 +151,7 @@ class ExperimentConfig(BaseModel):
     @property
     def all_features(self) -> list[str]:
         """Lista completa de features activas según configuración de fuentes."""
-        feats = (
-            self.features.base
-            + self.features.lagged
-            + self.features.seasonality
-        )
+        feats = self.features.base + self.features.lagged + self.features.seasonality
         if self.fuentes.siata.activo:
             feats += self.features.siata
         return feats
@@ -188,28 +178,21 @@ class ExperimentConfig(BaseModel):
 
     def as_mlflow_params(self) -> dict[str, str]:
         """
-        Devuelve un dict plano con todos los parámetros relevantes
-        para registrar en mlflow.log_params().
-
-        MLflow requiere valores str o numéricos simples, sin anidamiento.
+        Devuelve un dict plano listo para mlflow.log_params().
+        MLflow no acepta valores anidados ni listas — todo se convierte a str.
         """
         return {
-            # Alcance
-            "geo.departamento":        self.geo.departamento,
-            "periodo.anio_inicio":     str(self.periodo.anio_inicio),
-            "periodo.anio_fin":        str(self.periodo.anio_fin),
-            # Fuentes
-            "fuentes.ideam.dataset_id":   self.fuentes.ideam.dataset_id,
-            "fuentes.ungrd.dataset_id":   self.fuentes.ungrd.dataset_id,
-            "fuentes.siata.activo":       str(self.fuentes.siata.activo),
-            # Target
-            "target.umbral_medio":     str(self.target.umbral_medio),
-            "target.umbral_alto":      str(self.target.umbral_alto),
-            # Features
-            "features.n_total":        str(len(self.all_features)),
-            "features.siata_activo":   str(self.fuentes.siata.activo),
-            # Keywords
-            "eventos.n_landslide_kw":  str(len(self.eventos.landslide_keywords)),
+            "geo.departamento":          self.geo.departamento,
+            "periodo.anio_inicio":       str(self.periodo.anio_inicio),
+            "periodo.anio_fin":          str(self.periodo.anio_fin),
+            "fuentes.ideam.dataset_id":  self.fuentes.ideam.dataset_id,
+            "fuentes.ungrd.dataset_id":  self.fuentes.ungrd.dataset_id,
+            "fuentes.siata.activo":      str(self.fuentes.siata.activo),
+            "target.tipo":               self.target.tipo,
+            "target.nombre":             self.target.nombre,
+            "target.class_weight":       self.target.class_weight,
+            "features.n_total":          str(len(self.all_features)),
+            "eventos.n_landslide_kw":    str(len(self.eventos.landslide_keywords)),
         }
 
 
@@ -234,10 +217,10 @@ def load_config(
 
     Parameters
     ----------
-    config_path:
+    config_path : str | Path | None
         Ruta al YAML. Si es None, busca por convención:
-        `{project_root}/configs/antioquia_deslizamientos.yaml`
-    project_root:
+        {project_root}/configs/antioquia_deslizamientos.yaml
+    project_root : Path | None
         Raíz del proyecto. Si es None, se resuelve subiendo desde el CWD
         hasta encontrar pyproject.toml.
 
@@ -250,8 +233,8 @@ def load_config(
     ------
     FileNotFoundError
         Si el archivo YAML no existe.
-    ValidationError
-        Si el YAML tiene valores inválidos (Pydantic).
+    pydantic.ValidationError
+        Si el YAML tiene valores inválidos.
     """
     if project_root is None:
         project_root = _find_project_root(Path.cwd())
@@ -270,7 +253,5 @@ def load_config(
         raw = yaml.safe_load(f)
 
     cfg = ExperimentConfig(**raw)
-    # Inyectar project_root (no viene del YAML, es runtime)
     object.__setattr__(cfg, "_project_root", project_root)
-
     return cfg
