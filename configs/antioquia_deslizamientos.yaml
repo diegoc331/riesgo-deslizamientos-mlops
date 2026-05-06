@@ -64,53 +64,50 @@ eventos:
 
 # ---------------------------------------------------------------------------
 # Target binario
-# 0 = no ocurre ningún deslizamiento en el mes
-# 1 = ocurre al menos un deslizamiento en el mes
-#
-# Ventaja sobre multiclase: no requiere umbrales arbitrarios.
-# Métrica principal: AUC-ROC + Recall de clase positiva (costo asimétrico:
-# es peor no detectar un deslizamiento real que generar una falsa alarma).
+# 0 = no ocurre ningún deslizamiento en los próximos 7 días
+# 1 = ocurre al menos un deslizamiento en los próximos 7 días
+
 # ---------------------------------------------------------------------------
 target:
   nombre: "deslizamiento"
   tipo: "binario"
   clase_positiva: 1
-  clase_positiva_desc: "Ocurre al menos un deslizamiento en el mes"
+  clase_positiva_desc: "Ocurre al menos un deslizamiento en los próximos 7 días"
   clase_negativa: 0
-  clase_negativa_desc: "No ocurre ningún deslizamiento en el mes"
-  # Peso de clase para manejar desbalance en el modelo
-  # "balanced" = sklearn calcula los pesos automáticamente
+  clase_negativa_desc: "No ocurre ningún deslizamiento en los próximos 7 días"
   class_weight: "balanced"
 
+# ---------------------------------------------------------------------------  
+ventanas:
+  precipitacion_dias: 14    # días hacia atrás para acumular precipitación
+  prediccion_dias: 7        # días hacia adelante que predice el target
+  granularidad: "semanal"   # unidad de análisis
+  
 # ---------------------------------------------------------------------------
 # Feature engineering
 # ---------------------------------------------------------------------------
 features:
   base:
-    - "precip_suma"
-    - "precip_max"
-    - "precip_media"
-    - "precip_dias"
+    - "precip_acum_14d"        # acumulado 14 días anteriores — feature principal
+    - "precip_max_diario_14d"  # máximo diario en los 14 días — captura intensidad
+    - "precip_dias_lluvia_14d" # días con lluvia > 0 en la ventana
+    - "precip_acum_7d"         # acumulado últimos 7 días — más reciente
+    - "precip_acum_3d"         # acumulado últimos 3 días — señal inmediata
     - "n_estaciones"
 
-  lagged:
-    - "precip_lag1"
-    - "precip_acum3m"
-    - "precip_acum6m"
-    - "precip_max3m"
-    - "precip_dias3m"
-
   seasonality:
-    - "mes_sin"
+    - "semana_sin"
+    - "semana_cos"
+    - "mes_sin"               # mantener mes también — captura bimodalidad Colombia
     - "mes_cos"
 
   siata:
-    - "siata_precip_suma"
-    - "siata_precip_max"
+    - "siata_precip_acum_14d"
+    - "siata_precip_max_14d"
 
   required_for_model:
-    - "precip_lag1"
-    - "precip_acum3m"
+    - "precip_acum_14d"
+    - "precip_acum_7d"
 
 # ---------------------------------------------------------------------------
 # Calidad de datos
@@ -121,12 +118,18 @@ calidad:
   precip_max_mm: 500
 
 # ---------------------------------------------------------------------------
+# Datos
+# ---------------------------------------------------------------------------
+datos:
+  dataset_procesado: "antioquia_deslizamientos_semanal_v1.csv"
+# ---------------------------------------------------------------------------
 # MLflow
 # ---------------------------------------------------------------------------
 mlflow:
   experiment_name: "antioquia_deslizamientos_binario"
   db_path: "mlruns/mlflow.db"
   run_tags:
+    dataset_procesado: "antioquia_deslizamientos_semanal_v1.csv"
     proyecto: "blindaje_territorio"
     equipo: "grupo_mlops"
     version_config: "2.0.0"

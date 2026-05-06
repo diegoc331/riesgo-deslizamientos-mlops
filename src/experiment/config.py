@@ -50,6 +50,10 @@ class PeriodoConfig(BaseModel):
             )
         return self
 
+class VentanasConfig(BaseModel):
+    precipitacion_dias: int = 14
+    prediccion_dias: int = 7
+    granularidad: str = "semanal"
 
 class IdeamSourceConfig(BaseModel):
     dataset_id: str
@@ -102,7 +106,6 @@ class TargetConfig(BaseModel):
 
 class FeaturesConfig(BaseModel):
     base: list[str]
-    lagged: list[str]
     seasonality: list[str]
     siata: list[str]
     required_for_model: list[str]
@@ -118,6 +121,9 @@ class MLflowConfig(BaseModel):
     experiment_name: str
     db_path: str
     run_tags: dict[str, str] = {}
+    
+class DatosConfig(BaseModel):
+    dataset_procesado: str
 
 
 # ---------------------------------------------------------------------------
@@ -130,7 +136,9 @@ class ExperimentConfig(BaseModel):
     geo: GeoConfig
     periodo: PeriodoConfig
     fuentes: FuentesConfig
+    datos: DatosConfig
     eventos: EventosConfig
+    ventanas: VentanasConfig
     target: TargetConfig
     features: FeaturesConfig
     calidad: CalidadConfig
@@ -143,6 +151,10 @@ class ExperimentConfig(BaseModel):
     # ------------------------------------------------------------------
 
     @property
+    def dataset_path(self) -> Path:
+        return self.processed_dir / self.datos.dataset_procesado
+
+    @property
     def project_root(self) -> Path:
         if self._project_root is None:
             raise RuntimeError("project_root no fue inyectado. Usa load_config().")
@@ -151,7 +163,7 @@ class ExperimentConfig(BaseModel):
     @property
     def all_features(self) -> list[str]:
         """Lista completa de features activas según configuración de fuentes."""
-        feats = self.features.base + self.features.lagged + self.features.seasonality
+        feats = self.features.base + self.features.seasonality
         if self.fuentes.siata.activo:
             feats += self.features.siata
         return feats
@@ -193,6 +205,9 @@ class ExperimentConfig(BaseModel):
             "target.class_weight":       self.target.class_weight,
             "features.n_total":          str(len(self.all_features)),
             "eventos.n_landslide_kw":    str(len(self.eventos.landslide_keywords)),
+            "ventanas.precipitacion_dias": str(self.ventanas.precipitacion_dias),
+            "ventanas.prediccion_dias":    str(self.ventanas.prediccion_dias),
+            "ventanas.granularidad":       self.ventanas.granularidad,
         }
 
 
