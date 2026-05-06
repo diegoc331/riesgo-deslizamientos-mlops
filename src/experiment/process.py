@@ -6,6 +6,7 @@ import unicodedata
 from pathlib import Path
 
 import pandas as pd
+import numpy as np
 
 PROCESSED_DIR = Path(__file__).parents[2] / "data" / "processed"
 
@@ -111,72 +112,103 @@ def clean_ungrd(df: pd.DataFrame) -> pd.DataFrame:
     print(f"UNGRD limpio: {len(df):,} eventos | {df['fecha'].min().date()} → {df['fecha'].max().date()}")
     return df[["fecha", "anio", "mes", "anio_mes", "departamento", evento_col_out]]
 
-
-def aggregate_monthly(df_ideam: pd.DataFrame, df_ungrd: pd.DataFrame) -> pd.DataFrame:
+def aggregate_weekly_ideam(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Agrega a nivel (departamento, año-mes).
+    Agrega precipitación IDEAM a nivel diario primero, luego construye
+    ventanas deslizantes de 14 días por semana ISO.
 
-    - IDEAM  → suma y máximo mensual de precipitación
-    - UNGRD  → conteo de eventos hidrometeorológicos
-    - target = 1 si hubo ≥1 evento ese mes en ese departamento
+    La agregación diaria es el paso intermedio necesario: los sensores
+    pueden tener múltiples lecturas por día y necesitamos una sola
+    cifra diaria antes de acumular la ventana.
     """
-    precip_monthly = (
-        df_ideam.groupby(["departamento", "anio_mes"], observed=True)
+    df = df.copy()
+
+    # Paso 1: agregar a nivel diario
+    df["fecha_dia"] = df["fecha"].dt.date
+    diario = (
+        df.groupby("fecha_dia")
         .agg(
-            precip_suma=("precip_mm", "sum"),
-            precip_max=("precip_mm", "max"),
-            precip_dias_lluvia=("precip_mm", lambda x: (x > 0).sum()),
+            precip_diaria  = ("precip_mm", "sum"),
+            n_estaciones   = ("precip_mm", "count"),
         )
         .reset_index()
     )
+    diario["fecha_dia"] = pd.to_datetime(diario["fecha_dia"])
 
-    eventos_monthly = (
-        df_ungrd.groupby(["departamento", "anio_mes"], observed=True)
+
+    # Paso 2: crear índice diario completo (detecta días sin datos)
+    idx_completo = pd.date_range(
+        diario["fecha_dia"].min(),
+        diario["fecha_dia"].max(),
+        freq="D"
+    )
+    diario = (
+        diario.set_index("fecha_dia")
+        .reindex(idx_completo)
+        .rename_axis("fecha_dia")
+        .reset_index()
+    )
+    # Imputar días sin datos con 0 (ausencia de reporte ≠ ausencia de lluvia,
+    # pero es la única opción conservadora sin datos SIATA)
+    diario["precip_diaria"]  = diario["precip_diaria"].fillna(0)
+    diario["n_estaciones"]   = diario["n_estaciones"].fillna(0)
+
+    # Paso 3: construir ventanas deslizantes por semana ISO
+    # Cada semana toma los 14 días anteriores como ventana de precipitación
+    diario = diario.sort_values("fecha_dia").reset_index(drop=True)
+    diario["semana_iso"]     = diario["fecha_dia"].dt.isocalendar().week.astype(int)
+    diario["anio_iso"]       = diario["fecha_dia"].dt.isocalendar().year.astype(int)
+    diario["anio_semana"]    = (
+        diario["fecha_dia"].dt.to_period("W")
+    )
+
+    # Rolling sobre el índice diario — shift(1) para no incluir la semana actual
+    diario["precip_acum_14d"]        = diario["precip_diaria"].rolling(14, min_periods=7).sum()
+    diario["precip_acum_7d"]         = diario["precip_diaria"].rolling(7,  min_periods=4).sum()
+    diario["precip_acum_3d"]         = diario["precip_diaria"].rolling(3,  min_periods=2).sum()
+    diario["precip_max_diario_14d"]  = diario["precip_diaria"].rolling(14, min_periods=7).max()
+    diario["precip_dias_lluvia_14d"] = (
+        (diario["precip_diaria"] > 0).rolling(14, min_periods=7).sum()
+    )
+
+    # Paso 4: colapsar a nivel semanal tomando el último día de cada semana
+    # (el acumulado de 14 días al final de la semana es la feature del modelo)
+    semanal = (
+        diario.groupby("anio_semana", observed=True)
+        .agg(
+            precip_acum_14d        = ("precip_acum_14d",        "last"),
+            precip_acum_7d         = ("precip_acum_7d",         "last"),
+            precip_acum_3d         = ("precip_acum_3d",         "last"),
+            precip_max_diario_14d  = ("precip_max_diario_14d",  "last"),
+            precip_dias_lluvia_14d = ("precip_dias_lluvia_14d", "last"),
+            n_estaciones           = ("n_estaciones",           "mean"),
+            fecha_fin_semana       = ("fecha_dia",              "last"),
+        )
+        .reset_index()
+    )
+    semanal["mes"]        = semanal["fecha_fin_semana"].dt.month
+    semanal["semana_sin"] = np.sin(2 * np.pi * semanal["fecha_fin_semana"].dt.isocalendar().week / 52)
+    semanal["semana_cos"] = np.cos(2 * np.pi * semanal["fecha_fin_semana"].dt.isocalendar().week / 52)
+    semanal["mes_sin"]    = np.sin(2 * np.pi * semanal["mes"] / 12)
+    semanal["mes_cos"]    = np.cos(2 * np.pi * semanal["mes"] / 12)
+
+    print(f"IDEAM semanal: {len(semanal):,} semanas")
+    return semanal
+
+def aggregate_weekly_ungrd(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Agrega eventos UNGRD a nivel semanal.
+    Usa la fecha del evento (no de reporte) si está disponible.
+    """
+    df = df.copy()
+    df["anio_semana"] = df["fecha"].dt.to_period("W")
+
+    semanal = (
+        df.groupby("anio_semana", observed=True)
         .size()
-        .reset_index(name="n_eventos")
+        .reset_index(name="n_deslizamientos")
     )
-
-    df = precip_monthly.merge(eventos_monthly, on=["departamento", "anio_mes"], how="left")
-    df["n_eventos"] = df["n_eventos"].fillna(0).astype(int)
-    df["target"] = (df["n_eventos"] >= 1).astype(int)
-    df["anio"] = df["anio_mes"].dt.year
-    df["mes"] = df["anio_mes"].dt.month
-    df = df.sort_values(["departamento", "anio_mes"]).reset_index(drop=True)
-
-    positivos = df["target"].sum()
-    print(f"Dataset unido: {len(df):,} filas | "
-          f"con evento: {positivos:,} ({df['target'].mean():.1%})")
-    return df
-
-
-def build_features(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Calcula acumulados de precipitación rezagados por departamento.
-
-    - precip_lag1   : precipitación mes anterior
-    - precip_acum3m : suma últimos 3 meses
-    - precip_acum6m : suma últimos 6 meses
-    - precip_max3m  : máximo mensual en últimos 3 meses
-    """
-    df = df.copy().sort_values(["departamento", "anio_mes"])
-
-    df["precip_lag1"] = df.groupby("departamento", group_keys=False)["precip_suma"].transform(
-        lambda x: x.shift(1)
-    )
-    df["precip_acum3m"] = df.groupby("departamento", group_keys=False)["precip_suma"].transform(
-        lambda x: x.shift(1).rolling(3, min_periods=1).sum()
-    )
-    df["precip_acum6m"] = df.groupby("departamento", group_keys=False)["precip_suma"].transform(
-        lambda x: x.shift(1).rolling(6, min_periods=1).sum()
-    )
-    df["precip_max3m"] = df.groupby("departamento", group_keys=False)["precip_max"].transform(
-        lambda x: x.shift(1).rolling(3, min_periods=1).max()
-    )
-
-    df = df.dropna(subset=["precip_lag1", "precip_acum3m"])
-    print(f"Dataset con features: {len(df):,} filas listas para correlación")
-    return df
-
+    return semanal
 
 def save_processed(df: pd.DataFrame, name: str = "dataset_correlacion.csv") -> None:
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
