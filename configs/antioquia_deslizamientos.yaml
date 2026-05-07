@@ -126,7 +126,7 @@ datos:
 # MLflow
 # ---------------------------------------------------------------------------
 mlflow:
-  experiment_name: "antioquia_deslizamientos_binario"
+  experiment_name: "antioquia_deslizamientos_semanal"
   db_path: "mlruns/mlflow.db"
   run_tags:
     dataset_procesado: "antioquia_deslizamientos_semanal_v1.csv"
