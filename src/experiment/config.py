@@ -55,6 +55,17 @@ class VentanasConfig(BaseModel):
     prediccion_dias: int = 7
     granularidad: str = "semanal"
 
+
+class PseudoAbsenceConfig(BaseModel):
+    precip_percentil: float = 0.25
+    area_percentil: float = 0.25
+
+
+class EspacialConfig(BaseModel):
+    granularidad: str = "cuenca"
+    hydrobasins_nivel: int = 5
+    pseudo_absence: PseudoAbsenceConfig = PseudoAbsenceConfig()
+
 class IdeamSourceConfig(BaseModel):
     dataset_id: str
     descripcion: str = ""
@@ -172,6 +183,7 @@ class ExperimentConfig(BaseModel):
     fuentes: FuentesConfig
     datos: DatosConfig
     eventos: EventosConfig
+    espacial: EspacialConfig = EspacialConfig()
     ventanas: VentanasConfig
     target: TargetConfig
     features: FeaturesConfig
