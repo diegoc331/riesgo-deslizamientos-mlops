@@ -98,7 +98,17 @@ target:
   clase_negativa_desc: "No ocurre ningún deslizamiento en los próximos 7 días"
   class_weight: "balanced"
 
-# ---------------------------------------------------------------------------  
+# ---------------------------------------------------------------------------
+# Configuración espacial (Fase 2)
+# ---------------------------------------------------------------------------
+espacial:
+  granularidad: "cuenca"       # "departamento" (v1/v2) | "cuenca" (v3)
+  hydrobasins_nivel: 5         # nivel HydroSHEDS — nivel 5 ≈ 100-500 km² por cuenca
+  pseudo_absence:
+    precip_percentil: 0.25     # semanas con precip ≤ P25 → negativos defensibles
+    area_percentil: 0.25       # cuencas con UP_AREA ≤ P25 → "headwaters estables"
+
+# ---------------------------------------------------------------------------
 ventanas:
   precipitacion_dias: 14    # días hacia atrás para acumular precipitación
   prediccion_dias: 7        # días hacia adelante que predice el target
