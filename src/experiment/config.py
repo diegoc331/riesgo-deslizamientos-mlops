@@ -73,10 +73,43 @@ class SiataSourceConfig(BaseModel):
     descripcion: str = ""
 
 
+class BboxConfig(BaseModel):
+    lat_min: float
+    lat_max: float
+    lon_min: float
+    lon_max: float
+
+
+class ChirpsSourceConfig(BaseModel):
+    activo: bool = True
+    descripcion: str = ""
+    base_url: str = "https://data.chc.ucsb.edu/products/CHIRPS-2.0/global_daily/tifs/p05"
+    bbox: BboxConfig
+
+
+class Era5BboxConfig(BaseModel):
+    north: float
+    west: float
+    south: float
+    east: float
+
+    def as_list(self) -> list[float]:
+        return [self.north, self.west, self.south, self.east]
+
+
+class Era5SourceConfig(BaseModel):
+    activo: bool = True
+    descripcion: str = ""
+    variables: list[str] = ["volumetric_soil_water_layer_2"]
+    bbox: Era5BboxConfig
+
+
 class FuentesConfig(BaseModel):
     ideam: IdeamSourceConfig
     ungrd: UngrdSourceConfig
     siata: SiataSourceConfig
+    chirps: ChirpsSourceConfig
+    era5: Era5SourceConfig
 
 
 class EventosConfig(BaseModel):
@@ -106,6 +139,7 @@ class TargetConfig(BaseModel):
 
 class FeaturesConfig(BaseModel):
     base: list[str]
+    era5: list[str] = []
     seasonality: list[str]
     siata: list[str]
     required_for_model: list[str]
@@ -164,6 +198,8 @@ class ExperimentConfig(BaseModel):
     def all_features(self) -> list[str]:
         """Lista completa de features activas según configuración de fuentes."""
         feats = self.features.base + self.features.seasonality
+        if self.fuentes.era5.activo:
+            feats += self.features.era5
         if self.fuentes.siata.activo:
             feats += self.features.siata
         return feats
@@ -194,17 +230,19 @@ class ExperimentConfig(BaseModel):
         MLflow no acepta valores anidados ni listas — todo se convierte a str.
         """
         return {
-            "geo.departamento":          self.geo.departamento,
-            "periodo.anio_inicio":       str(self.periodo.anio_inicio),
-            "periodo.anio_fin":          str(self.periodo.anio_fin),
-            "fuentes.ideam.dataset_id":  self.fuentes.ideam.dataset_id,
-            "fuentes.ungrd.dataset_id":  self.fuentes.ungrd.dataset_id,
-            "fuentes.siata.activo":      str(self.fuentes.siata.activo),
-            "target.tipo":               self.target.tipo,
-            "target.nombre":             self.target.nombre,
-            "target.class_weight":       self.target.class_weight,
-            "features.n_total":          str(len(self.all_features)),
-            "eventos.n_landslide_kw":    str(len(self.eventos.landslide_keywords)),
+            "geo.departamento":            self.geo.departamento,
+            "periodo.anio_inicio":         str(self.periodo.anio_inicio),
+            "periodo.anio_fin":            str(self.periodo.anio_fin),
+            "fuentes.ideam.dataset_id":    self.fuentes.ideam.dataset_id,
+            "fuentes.ungrd.dataset_id":    self.fuentes.ungrd.dataset_id,
+            "fuentes.siata.activo":        str(self.fuentes.siata.activo),
+            "fuentes.chirps.activo":       str(self.fuentes.chirps.activo),
+            "fuentes.era5.activo":         str(self.fuentes.era5.activo),
+            "target.tipo":                 self.target.tipo,
+            "target.nombre":               self.target.nombre,
+            "target.class_weight":         self.target.class_weight,
+            "features.n_total":            str(len(self.all_features)),
+            "eventos.n_landslide_kw":      str(len(self.eventos.landslide_keywords)),
             "ventanas.precipitacion_dias": str(self.ventanas.precipitacion_dias),
             "ventanas.prediccion_dias":    str(self.ventanas.prediccion_dias),
             "ventanas.granularidad":       self.ventanas.granularidad,

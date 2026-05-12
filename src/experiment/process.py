@@ -215,3 +215,190 @@ def save_processed(df: pd.DataFrame, name: str = "dataset_correlacion.csv") -> N
     path = PROCESSED_DIR / name
     df.to_csv(path, index=False)
     print(f"Guardado en {path}")
+
+
+# =============================================================================
+# CHIRPS v2.0 — agregación semanal (reemplaza aggregate_weekly_ideam)
+# =============================================================================
+
+def aggregate_weekly_chirps(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Construye features semanales de precipitación desde una serie CHIRPS diaria.
+
+    CHIRPS tiene cobertura 100% (sin huecos), por lo que no se imputan ceros
+    por falta de datos — solo se rellena si faltan fechas por error de descarga.
+
+    Parameters
+    ----------
+    df : DataFrame con columnas [fecha, precip_mm]
+
+    Returns
+    -------
+    DataFrame semanal con features de precipitación + codificaciones cíclicas,
+    indexado por anio_semana (Period[W]).
+    """
+    df = df.copy()
+    df["fecha"] = pd.to_datetime(df["fecha"])
+    df = df.sort_values("fecha").reset_index(drop=True)
+
+    # Índice diario completo — rellena huecos de descarga con 0
+    idx_completo = pd.date_range(df["fecha"].min(), df["fecha"].max(), freq="D")
+    df = (
+        df.set_index("fecha")
+        .reindex(idx_completo)
+        .rename_axis("fecha")
+        .reset_index()
+    )
+    n_huecos = df["precip_mm"].isna().sum()
+    if n_huecos > 0:
+        print(f"  CHIRPS: {n_huecos} días sin datos → imputados con 0")
+    df["precip_mm"] = df["precip_mm"].fillna(0.0)
+
+    # Rolling windows sobre serie diaria continua
+    df["anio_semana"] = df["fecha"].dt.to_period("W")
+    df["precip_acum_14d"]        = df["precip_mm"].rolling(14, min_periods=7).sum()
+    df["precip_acum_7d"]         = df["precip_mm"].rolling(7,  min_periods=4).sum()
+    df["precip_acum_3d"]         = df["precip_mm"].rolling(3,  min_periods=2).sum()
+    df["precip_max_diario_14d"]  = df["precip_mm"].rolling(14, min_periods=7).max()
+    df["precip_dias_lluvia_14d"] = (df["precip_mm"] > 0).rolling(14, min_periods=7).sum()
+
+    # Colapsar a nivel semanal (último día = acumulado final de la ventana)
+    semanal = (
+        df.groupby("anio_semana", observed=True)
+        .agg(
+            precip_acum_14d        = ("precip_acum_14d",        "last"),
+            precip_acum_7d         = ("precip_acum_7d",         "last"),
+            precip_acum_3d         = ("precip_acum_3d",         "last"),
+            precip_max_diario_14d  = ("precip_max_diario_14d",  "last"),
+            precip_dias_lluvia_14d = ("precip_dias_lluvia_14d", "last"),
+            fecha_fin_semana       = ("fecha",                  "last"),
+        )
+        .reset_index()
+    )
+
+    semanal["mes"]        = semanal["fecha_fin_semana"].dt.month
+    semanal["semana_sin"] = np.sin(2 * np.pi * semanal["fecha_fin_semana"].dt.isocalendar().week / 52)
+    semanal["semana_cos"] = np.cos(2 * np.pi * semanal["fecha_fin_semana"].dt.isocalendar().week / 52)
+    semanal["mes_sin"]    = np.sin(2 * np.pi * semanal["mes"] / 12)
+    semanal["mes_cos"]    = np.cos(2 * np.pi * semanal["mes"] / 12)
+
+    print(
+        f"CHIRPS semanal: {len(semanal)} semanas | "
+        f"precip_acum_14d media={semanal['precip_acum_14d'].mean():.1f} mm "
+        f"(vs IDEAM ~16 mm con 96.6% ceros)"
+    )
+    return semanal
+
+
+# =============================================================================
+# ERA5-Land — agregación semanal de humedad de suelo
+# =============================================================================
+
+def aggregate_weekly_era5(df: pd.DataFrame, ventana_dias: int = 14) -> pd.DataFrame:
+    """
+    Construye features semanales de humedad de suelo desde ERA5-Land diario.
+
+    Parameters
+    ----------
+    df : DataFrame con columnas [fecha, soil_moisture_m3m3]
+    ventana_dias : int
+        Días de ventana para el rolling mean (default 14).
+
+    Returns
+    -------
+    DataFrame semanal con [anio_semana, soil_moisture_14d, fecha_fin_semana].
+    """
+    df = df.copy()
+    df["fecha"] = pd.to_datetime(df["fecha"])
+    df = df.sort_values("fecha").reset_index(drop=True)
+
+    # Índice diario completo con interpolación lineal para días faltantes
+    idx_completo = pd.date_range(df["fecha"].min(), df["fecha"].max(), freq="D")
+    df = (
+        df.set_index("fecha")
+        .reindex(idx_completo)
+        .rename_axis("fecha")
+        .reset_index()
+    )
+    n_gaps = df["soil_moisture_m3m3"].isna().sum()
+    if n_gaps > 0:
+        df["soil_moisture_m3m3"] = df["soil_moisture_m3m3"].interpolate(method="linear")
+        print(f"  ERA5-Land: {n_gaps} días interpolados linealmente")
+
+    # Rolling mean de ventana_dias días
+    df["anio_semana"] = df["fecha"].dt.to_period("W")
+    df[f"soil_moisture_{ventana_dias}d"] = (
+        df["soil_moisture_m3m3"]
+        .rolling(ventana_dias, min_periods=ventana_dias // 2)
+        .mean()
+    )
+
+    semanal = (
+        df.groupby("anio_semana", observed=True)
+        .agg(
+            soil_moisture_14d = (f"soil_moisture_{ventana_dias}d", "last"),
+            fecha_fin_semana  = ("fecha",                         "last"),
+        )
+        .reset_index()
+    )
+
+    print(
+        f"ERA5-Land semanal: {len(semanal)} semanas | "
+        f"soil_moisture_14d media={semanal['soil_moisture_14d'].mean():.4f} m³/m³"
+    )
+    return semanal
+
+
+def build_weekly_dataset_v2(
+    df_chirps_semanal: pd.DataFrame,
+    df_era5_semanal: pd.DataFrame,
+    df_ungrd_semanal: pd.DataFrame,
+    periodo: tuple[int, int] = (2019, 2022),
+) -> pd.DataFrame:
+    """
+    Combina CHIRPS semanal + ERA5-Land semanal + etiquetas UNGRD en un
+    único DataFrame listo para modelar (dataset v2).
+
+    Parameters
+    ----------
+    df_chirps_semanal : salida de aggregate_weekly_chirps()
+    df_era5_semanal   : salida de aggregate_weekly_era5()
+    df_ungrd_semanal  : salida de aggregate_weekly_ungrd() con target binario
+    periodo           : (anio_inicio, anio_fin) para filtrar semanas
+
+    Returns
+    -------
+    DataFrame con index anio_semana, features de precipitación + humedad
+    + codificaciones cíclicas + target binario.
+    """
+    # Join por semana ISO
+    df = df_chirps_semanal.merge(
+        df_era5_semanal[["anio_semana", "soil_moisture_14d"]],
+        on="anio_semana",
+        how="left",
+    )
+    df = df.merge(df_ungrd_semanal, on="anio_semana", how="left")
+
+    # Rellenar semanas sin eventos como 0 (ningún deslizamiento reportado)
+    df["n_deslizamientos"] = df["n_deslizamientos"].fillna(0).astype(int)
+
+    # Target: ¿ocurrirá al menos un deslizamiento la PRÓXIMA semana?
+    df["deslizamiento"] = (df["n_deslizamientos"].shift(-1) > 0).astype(int)
+
+    # Filtrar al período configurado
+    anio_ini, anio_fin = periodo
+    fecha_ini = pd.Period(f"{anio_ini}-W01", "W")
+    fecha_fin = pd.Period(f"{anio_fin}-W52", "W")
+    df = df[(df["anio_semana"] >= fecha_ini) & (df["anio_semana"] <= fecha_fin)]
+
+    # Eliminar última semana (no tiene target — shift(-1) produce NaN)
+    df = df.dropna(subset=["deslizamiento", "precip_acum_14d"])
+
+    df = df.reset_index(drop=True)
+    print(
+        f"\nDataset v2 construido: {len(df)} semanas × {df.shape[1]} columnas\n"
+        f"  Target: {df['deslizamiento'].sum()} positivas / "
+        f"{(df['deslizamiento'] == 0).sum()} negativas\n"
+        f"  soil_moisture_14d NaN: {df['soil_moisture_14d'].isna().sum()}"
+    )
+    return df
