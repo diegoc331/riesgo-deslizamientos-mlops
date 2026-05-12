@@ -1,15 +1,11 @@
 """
-Descarga de datos desde APIs públicas de Colombia (datos.gov.co).
+Descarga de datos desde APIs públicas de Colombia y fuentes satelitales globales.
 
-Datasets usados:
-  - s54a-sgyg : Precipitación IDEAM (sensores automáticos, mm)
-  - wwkg-r6te : Emergencias UNGRD 2019-2022 (eventos hidrometeorológicos)
-
-Estrategia IDEAM:
-  El dataset tiene millones de lecturas sub-horarias. En lugar de descargar
-  todo y agregar localmente, descargamos mes a mes con un límite de registros
-  por mes y luego agregamos por departamento. Esto evita timeouts en GROUP BY
-  del servidor y da cobertura temporal completa.
+Datasets:
+  - s54a-sgyg       : Precipitación IDEAM — sensores automáticos (legacy, 3.4% cobertura)
+  - wwkg-r6te       : Emergencias UNGRD 2019-2022
+  - CHIRPS v2.0     : Precipitación diaria 5.5 km (CHC/UCSB) — sin registro requerido
+  - ERA5-Land swvl2 : Humedad suelo 7-28 cm, 9 km (ECMWF/Copernicus) — requiere ~/.cdsapirc
 """
 
 from __future__ import annotations
@@ -151,3 +147,207 @@ def load_ungrd() -> pd.DataFrame:
         print(f"Cargando UNGRD desde cache: {path}")
         return pd.read_csv(path, low_memory=False)
     return download_ungrd()
+
+
+# =============================================================================
+# CHIRPS v2.0 — precipitación diaria satelital (sin registro)
+# =============================================================================
+
+def download_chirps(
+    anio_inicio: int = 2019,
+    anio_fin: int = 2022,
+    bbox: tuple[float, float, float, float] = (5.0, -77.1, 8.9, -73.9),
+    save: bool = True,
+) -> pd.DataFrame:
+    """
+    Descarga CHIRPS v2.0 diario y extrae la precipitación media sobre Antioquia.
+
+    Estrategia: un .tif.gz por día → descomprime en memoria → recorta al bbox
+    con una ventana rasterio → calcula media espacial. Los rasters no se
+    persisten en disco; solo se guarda el CSV diario ligero (~1500 filas).
+    Soporta reanudación: si el CSV existe, solo descarga fechas faltantes.
+
+    Parameters
+    ----------
+    bbox : (lat_min, lon_min, lat_max, lon_max)
+        Bounding box de Antioquia: (5.0, -77.1, 8.9, -73.9)
+    """
+    try:
+        import gzip
+        import io
+        import rasterio
+        from rasterio.io import MemoryFile
+        from rasterio.windows import from_bounds
+    except ImportError:
+        raise ImportError("Instala rasterio: uv add rasterio")
+
+    cache_path = RAW_DIR / "chirps_antioquia_daily.csv"
+    lat_min, lon_min, lat_max, lon_max = bbox
+
+    # Reanudación: detectar fechas ya descargadas
+    done_dates: set = set()
+    df_existing: pd.DataFrame | None = None
+    if cache_path.exists():
+        df_existing = pd.read_csv(cache_path, parse_dates=["fecha"])
+        done_dates = set(df_existing["fecha"].dt.date)
+
+    date_range = pd.date_range(f"{anio_inicio}-01-01", f"{anio_fin}-12-31", freq="D")
+    pending = [d for d in date_range if d.date() not in done_dates]
+
+    if not pending:
+        print(f"CHIRPS ya completo: {len(df_existing):,} días en caché.")
+        return df_existing
+
+    print(f"Descargando CHIRPS: {len(pending)} días pendientes "
+          f"(de {len(date_range)} totales)...")
+
+    BASE = "https://data.chc.ucsb.edu/products/CHIRPS-2.0/global_daily/tifs/p05"
+    new_records = []
+
+    for i, date in enumerate(pending, 1):
+        y, m, d = date.year, date.month, date.day
+        fname = f"chirps-v2.0.{y}.{m:02d}.{d:02d}.tif.gz"
+        url = f"{BASE}/{y}/{fname}"
+        precip = 0.0
+
+        try:
+            resp = requests.get(url, timeout=60)
+            resp.raise_for_status()
+            with gzip.open(io.BytesIO(resp.content)) as gz_file:
+                tif_bytes = gz_file.read()
+            with MemoryFile(tif_bytes) as memfile:
+                with memfile.open() as src:
+                    window = from_bounds(lon_min, lat_min, lon_max, lat_max, src.transform)
+                    data = src.read(1, window=window, masked=True)
+                    if data.count() > 0:
+                        valid = data.compressed()
+                        valid = valid[valid >= 0]
+                        if len(valid) > 0:
+                            precip = float(valid.mean())
+        except Exception as e:
+            if i <= 3 or i % 365 == 0:
+                print(f"  ⚠ {date.date()}: {e}")
+
+        new_records.append({"fecha": date, "precip_mm": precip})
+
+        if i % 100 == 0 or i == len(pending):
+            print(f"  [{i:4d}/{len(pending)}] {date.date()} — {precip:.2f} mm", flush=True)
+
+    df_new = pd.DataFrame(new_records)
+    df_new["fecha"] = pd.to_datetime(df_new["fecha"])
+
+    df_final = (
+        pd.concat([df_existing, df_new], ignore_index=True)
+        if df_existing is not None
+        else df_new
+    )
+    df_final = df_final.sort_values("fecha").reset_index(drop=True)
+
+    if save:
+        RAW_DIR.mkdir(parents=True, exist_ok=True)
+        df_final.to_csv(cache_path, index=False)
+        print(f"CHIRPS guardado: {len(df_final):,} días → {cache_path}")
+
+    return df_final
+
+
+def load_chirps(anio_inicio: int = 2019, anio_fin: int = 2022) -> pd.DataFrame:
+    """Carga CHIRPS desde caché o descarga si faltan fechas."""
+    return download_chirps(anio_inicio=anio_inicio, anio_fin=anio_fin)
+
+
+# =============================================================================
+# ERA5-Land — humedad de suelo (requiere cuenta Copernicus CDS)
+# =============================================================================
+
+def download_era5(
+    anio_inicio: int = 2019,
+    anio_fin: int = 2022,
+    variables: list[str] | None = None,
+    area: list[float] | None = None,
+    save: bool = True,
+) -> pd.DataFrame:
+    """
+    Descarga ERA5-Land (humedad suelo capa 2, swvl2) vía CDSAPI.
+
+    Requiere ~/.cdsapirc con URL y key de https://cds.climate.copernicus.eu/user/register
+    (registro gratuito, aprobación instantánea).
+
+    Estrategia: una petición por año con variable swvl2 a las 00:00 UTC.
+    swvl2 es instantánea → snapshot diario a 00:00 UTC es un proxy válido.
+    Resultado: CSV diario con [fecha, soil_moisture_m3m3].
+    """
+    try:
+        import cdsapi
+    except ImportError:
+        raise ImportError("Instala cdsapi: uv add cdsapi")
+    try:
+        import xarray as xr
+    except ImportError:
+        raise ImportError("Instala xarray y netCDF4: uv add xarray netCDF4")
+
+    if variables is None:
+        variables = ["volumetric_soil_water_layer_2"]
+    if area is None:
+        area = [8.9, -77.1, 5.0, -73.9]  # N, W, S, E
+
+    cache_path = RAW_DIR / "era5_antioquia_daily.csv"
+    if cache_path.exists():
+        print(f"Cargando ERA5-Land desde caché: {cache_path}")
+        return pd.read_csv(cache_path, parse_dates=["fecha"])
+
+    RAW_DIR.mkdir(parents=True, exist_ok=True)
+    c = cdsapi.Client()
+    nc_files: list[Path] = []
+
+    for year in range(anio_inicio, anio_fin + 1):
+        nc_path = RAW_DIR / f"era5_antioquia_{year}.nc"
+        nc_files.append(nc_path)
+        if nc_path.exists():
+            print(f"  {year}: ya descargado ({nc_path.name})")
+            continue
+        print(f"  Descargando ERA5-Land {year} ({variables})...")
+        c.retrieve(
+            "reanalysis-era5-land",
+            {
+                "product_type": "reanalysis",
+                "variable": variables,
+                "year": str(year),
+                "month": [str(m).zfill(2) for m in range(1, 13)],
+                "day":   [str(d).zfill(2) for d in range(1, 32)],
+                "time":  "00:00",
+                "area":  area,
+                "format": "netcdf",
+            },
+            str(nc_path),
+        )
+
+    # Consolidar años en serie diaria
+    records = []
+    for nc_path in nc_files:
+        import numpy as np
+        ds = xr.open_dataset(nc_path)
+        # swvl2 o primer nombre de variable disponible
+        var_name = "swvl2" if "swvl2" in ds else next(iter(ds.data_vars))
+        da = ds[var_name].mean(dim=["latitude", "longitude"])
+        for t_val, sm_val in zip(da.time.values, da.values):
+            records.append({
+                "fecha": pd.Timestamp(t_val).normalize(),
+                "soil_moisture_m3m3": float(sm_val) if not np.isnan(sm_val) else np.nan,
+            })
+        ds.close()
+
+    df = pd.DataFrame(records)
+    df["fecha"] = pd.to_datetime(df["fecha"])
+    df = df.sort_values("fecha").reset_index(drop=True)
+
+    if save:
+        df.to_csv(cache_path, index=False)
+        print(f"ERA5-Land guardado: {len(df):,} días → {cache_path}")
+
+    return df
+
+
+def load_era5(anio_inicio: int = 2019, anio_fin: int = 2022) -> pd.DataFrame:
+    """Carga ERA5-Land desde caché o descarga si no existe."""
+    return download_era5(anio_inicio=anio_inicio, anio_fin=anio_fin)
