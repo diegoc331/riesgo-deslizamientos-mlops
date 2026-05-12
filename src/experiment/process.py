@@ -448,7 +448,7 @@ def build_cuenca_dataset_v3(
     # ------------------------------------------------------------------
     # 1. Features estáticas por cuenca (de HydroSHEDS)
     # ------------------------------------------------------------------
-    static_cols = ["HYBAS_ID", "SUB_AREA", "UP_AREA", "DIST_MAIN", "ORDER_"]
+    static_cols = ["HYBAS_ID", "SUB_AREA", "UP_AREA", "DIST_MAIN", "ORDER", "ORDER_"]
     available = [c for c in static_cols if c in gdf_cuencas.columns]
     df_static = pd.DataFrame(gdf_cuencas[available])
 
