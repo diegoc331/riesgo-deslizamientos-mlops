@@ -109,7 +109,7 @@ def _socrata_paged(dataset_id: str, params: dict, max_records: int = 30_000) -> 
         if not batch:
             break
         records.extend(batch)
-        print(f"  página {page}: +{len(batch):,} → total {len(records):,}")
+        print(f"  pagina {page}: +{len(batch):,} -> total {len(records):,}")
         if len(batch) < SOCRATA_LIMIT or len(records) >= max_records:
             break
         offset += SOCRATA_LIMIT
@@ -246,7 +246,7 @@ def download_chirps(
     if save:
         RAW_DIR.mkdir(parents=True, exist_ok=True)
         df_final.to_csv(cache_path, index=False)
-        print(f"CHIRPS guardado: {len(df_final):,} días → {cache_path}")
+        print(f"CHIRPS guardado: {len(df_final):,} dias -> {cache_path}")
 
     return df_final
 
@@ -274,7 +274,7 @@ def download_era5(
     (registro gratuito, aprobación instantánea).
 
     Estrategia: una petición por año con variable swvl2 a las 00:00 UTC.
-    swvl2 es instantánea → snapshot diario a 00:00 UTC es un proxy válido.
+    swvl2 es instantanea -> snapshot diario a 00:00 UTC es un proxy valido.
     Resultado: CSV diario con [fecha, soil_moisture_m3m3].
     """
     try:
@@ -343,7 +343,7 @@ def download_era5(
 
     if save:
         df.to_csv(cache_path, index=False)
-        print(f"ERA5-Land guardado: {len(df):,} días → {cache_path}")
+        print(f"ERA5-Land guardado: {len(df):,} dias -> {cache_path}")
 
     return df
 
