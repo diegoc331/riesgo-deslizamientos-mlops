@@ -1,20 +1,27 @@
 """
 Operaciones espaciales para el pipeline de deslizamientos (Fase 2).
 
-Módulo responsable de:
-  - Descargar límite departamental de Antioquia (GADM v4.1)
-  - Descargar cuencas HydroSHEDS nivel 5 para Antioquia (HydroBASINS)
-  - Descargar inventario SGC-SIMMA de movimientos en masa
-  - Asignar eventos puntuales a cuencas por intersección espacial
-  - Construir grid (semana × cuenca) con etiquetas binarias
+Modulo responsable de:
+  - Descargar limite departamental de Antioquia (GADM v4.1)
+  - Descargar cuencas HydroSHEDS nivel 10 para Antioquia (HydroBASINS)
+  - Descargar centroides municipales de Antioquia (GADM nivel 2)
+  - Descargar inventario SGC-SIMMA de movimientos en masa (sin fechas)
+  - Geocodificar eventos UNGRD usando centroides municipales
+  - Asignar eventos puntuales a cuencas por interseccion espacial
+  - Construir grid (semana x cuenca) con etiquetas binarias
   - Generar pseudo-ausencias defensibles para la clase negativa
 
-Granularidad objetivo: (anio_semana, HYBAS_ID) — ~300 cuencas × 204 semanas
+Granularidad objetivo: (anio_semana, HYBAS_ID) ~300 cuencas x 204 semanas
+
+Nota SIMMA: el FeatureServer de SGC devuelve el inventario espacial de
+cicatrices (sin campo FECHA). Para etiquetas temporales usar UNGRD
+geocodificado via get_ungrd_with_coords().
 """
 
 from __future__ import annotations
 
 import io
+import unicodedata
 import zipfile
 from pathlib import Path
 
@@ -22,20 +29,35 @@ import geopandas as gpd
 import pandas as pd
 import requests
 
-RAW_DIR   = Path(__file__).parents[2] / "data" / "raw"
+RAW_DIR    = Path(__file__).parents[2] / "data" / "raw"
 SPATIAL_DIR = RAW_DIR / "spatial"
+
+# URL corregida del servicio SIMMA (validada 2025-05)
+_SIMMA_BASE_URL = (
+    "https://services1.arcgis.com/Og2nrTKe5bptW02d/arcgis/rest/services/"
+    "Inventario_de_movimientos_en_masa/FeatureServer/0/query"
+)
+
+
+def _normalize_name(s: str) -> str:
+    """Minusculas, sin tildes, sin espacios — para join robusto de municipios."""
+    if not isinstance(s, str):
+        return ""
+    s = unicodedata.normalize("NFD", s.lower().strip())
+    s = "".join(c for c in s if unicodedata.category(c) != "Mn")
+    return s.replace(" ", "").replace("-", "")
 
 
 # =============================================================================
-# Descarga de capas geográficas base
+# Descarga de capas geograficas base
 # =============================================================================
 
 def download_antioquia_boundary() -> gpd.GeoDataFrame:
     """
-    Descarga el límite departamental de Antioquia desde GADM v4.1.
+    Descarga el limite departamental de Antioquia desde GADM v4.1.
 
     Fuente: https://gadm.org/
-    Licencia: Libre para uso no comercial y académico.
+    Licencia: Libre para uso no comercial y academico.
     """
     cache = SPATIAL_DIR / "antioquia_boundary.gpkg"
     if cache.exists():
@@ -43,7 +65,7 @@ def download_antioquia_boundary() -> gpd.GeoDataFrame:
 
     SPATIAL_DIR.mkdir(parents=True, exist_ok=True)
     url = "https://geodata.ucdavis.edu/gadm/gadm4.1/json/gadm41_COL_1.json"
-    print("Descargando límite departamental Colombia (GADM)...")
+    print("Descargando limite departamental Colombia (GADM)...")
     r = requests.get(url, timeout=120)
     r.raise_for_status()
 
@@ -51,32 +73,32 @@ def download_antioquia_boundary() -> gpd.GeoDataFrame:
     antioquia = gdf[gdf["NAME_1"].str.lower() == "antioquia"].copy()
 
     if antioquia.empty:
-        raise RuntimeError("No se encontró Antioquia en el GeoJSON de GADM.")
+        raise RuntimeError("No se encontro Antioquia en el GeoJSON de GADM.")
 
     antioquia.to_file(cache, driver="GPKG")
-    print(f"Límite Antioquia guardado: {cache}")
+    print(f"Limite Antioquia guardado: {cache}")
     return antioquia
 
 
-def download_hydrobasins(nivel: int = 5) -> gpd.GeoDataFrame:
+def download_hydrobasins(nivel: int = 10) -> gpd.GeoDataFrame:
     """
-    Descarga HydroSHEDS HydroBASINS nivel {nivel} para Suramérica
-    y recorta al polígono de Antioquia.
+    Descarga HydroSHEDS HydroBASINS nivel {nivel} para Suramerica
+    y recorta al poligono de Antioquia.
 
-    Nivel 5 ≈ 100–500 km² por cuenca — balance entre resolución y volumen.
+    Nivel 10 aprox 100-500 km^2 por cuenca (~300 cuencas en Antioquia).
     Fuente : https://www.hydrosheds.org/products/hydrobasins
-    Licencia: CC BY 4.0 — gratuita sin registro desde versión 1c.
+    Licencia: CC BY 4.0 - gratuita sin registro desde version 1c.
 
     Columnas clave del resultado:
-      HYBAS_ID  : identificador único de cuenca (int64)
-      SUB_AREA  : área de la sub-cuenca (km²)
-      UP_AREA   : área de drenaje acumulada aguas arriba (km²)
+      HYBAS_ID  : identificador unico de cuenca (int64)
+      SUB_AREA  : area de la sub-cuenca (km^2)
+      UP_AREA   : area de drenaje acumulada aguas arriba (km^2)
       DIST_MAIN : distancia al cauce principal (km)
-      ORDER_    : orden de Strahler del cauce principal
+      ORDER     : orden de Strahler del cauce principal
     """
     cache = SPATIAL_DIR / f"hydrobasins_antioquia_lev{nivel:02d}.gpkg"
     if cache.exists():
-        print(f"HydroBASINS cargado desde caché: {cache}")
+        print(f"HydroBASINS cargado desde cache: {cache}")
         return gpd.read_file(cache)
 
     SPATIAL_DIR.mkdir(parents=True, exist_ok=True)
@@ -84,13 +106,12 @@ def download_hydrobasins(nivel: int = 5) -> gpd.GeoDataFrame:
         f"https://data.hydrosheds.org/file/hydrobasins/standard/"
         f"hybas_sa_lev{nivel:02d}_v1c.zip"
     )
-    print(f"Descargando HydroBASINS nivel {nivel} Suramérica (~50 MB)...")
-    r = requests.get(url, timeout=300)
+    print(f"Descargando HydroBASINS nivel {nivel} Suramerica (~50-150 MB)...")
+    r = requests.get(url, timeout=600)
     r.raise_for_status()
 
     with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
         shp_name = next(n for n in zf.namelist() if n.endswith(".shp"))
-        # Extraer todos los archivos del shapefile (shp, dbf, shx, prj)
         stem = Path(shp_name).stem
         for member in zf.namelist():
             if Path(member).stem == stem:
@@ -100,71 +121,161 @@ def download_hydrobasins(nivel: int = 5) -> gpd.GeoDataFrame:
     antioquia = download_antioquia_boundary()
     gdf_sa = gdf_sa.to_crs(antioquia.crs)
 
-    # Filtro rápido por bbox antes del clip preciso
-    bbox = antioquia.total_bounds  # (minx, miny, maxx, maxy)
+    bbox = antioquia.total_bounds
     gdf_bbox = gdf_sa.cx[bbox[0]:bbox[2], bbox[1]:bbox[3]]
     gdf = gpd.clip(gdf_bbox, antioquia)
     gdf = gdf[gdf.geometry.area > 0].copy()
 
     gdf.to_file(cache, driver="GPKG")
-    print(f"HydroBASINS Antioquia: {len(gdf)} cuencas → {cache}")
+    print(f"HydroBASINS Antioquia: {len(gdf)} cuencas -> {cache}")
     return gdf
 
 
 # =============================================================================
-# Inventario SGC-SIMMA
+# Centroides municipales (para geocodificar eventos UNGRD)
+# =============================================================================
+
+def download_municipio_centroids() -> gpd.GeoDataFrame:
+    """
+    Descarga los municipios de Antioquia (GADM v4.1 nivel 2) y calcula
+    sus centroides. Sirve para geocodificar eventos UNGRD que solo tienen
+    nombre de municipio.
+
+    Retorna GeoDataFrame con columnas:
+      municipio_norm : nombre normalizado (sin tildes, minusculas)
+      NAME_2         : nombre oficial
+      geometry       : centroide del poligono municipal (punto)
+    """
+    cache = SPATIAL_DIR / "municipios_antioquia_centroids.gpkg"
+    if cache.exists():
+        return gpd.read_file(cache)
+
+    SPATIAL_DIR.mkdir(parents=True, exist_ok=True)
+    url = "https://geodata.ucdavis.edu/gadm/gadm4.1/json/gadm41_COL_2.json"
+    print("Descargando municipios Colombia (GADM nivel 2) ~30 MB...")
+    r = requests.get(url, timeout=300)
+    r.raise_for_status()
+
+    gdf = gpd.read_file(io.BytesIO(r.content))
+    antioquia = gdf[gdf["NAME_1"].str.lower() == "antioquia"].copy()
+
+    if antioquia.empty:
+        raise RuntimeError("No se encontraron municipios de Antioquia en GADM nivel 2.")
+
+    antioquia = antioquia.to_crs("EPSG:4326")
+    antioquia["municipio_norm"] = antioquia["NAME_2"].apply(_normalize_name)
+    antioquia["geometry"] = antioquia.geometry.centroid
+
+    result = antioquia[["municipio_norm", "NAME_2", "geometry"]].copy()
+    result.to_file(cache, driver="GPKG")
+    print(f"Centroides municipales Antioquia: {len(result)} municipios -> {cache}")
+    return result
+
+
+def get_ungrd_with_coords(
+    df_ungrd: pd.DataFrame,
+    gdf_municipios: gpd.GeoDataFrame | None = None,
+) -> gpd.GeoDataFrame:
+    """
+    Geocodifica eventos UNGRD usando centroides de municipios de Antioquia.
+
+    UNGRD tiene fecha + municipio pero no coordenadas individuales.
+    La asignacion usa el centroide del municipio como posicion aproximada.
+
+    Parameters
+    ----------
+    df_ungrd : DataFrame con columnas [fecha, departamento, municipio, evento]
+    gdf_municipios : centroides municipales (de download_municipio_centroids).
+                     Si es None, se descarga automaticamente.
+
+    Returns
+    -------
+    GeoDataFrame con geometria puntual (centroide municipal) + columnas originales.
+    Eventos cuyo municipio no se encuentra en GADM son descartados.
+    """
+    if gdf_municipios is None:
+        gdf_municipios = download_municipio_centroids()
+
+    df = df_ungrd.copy()
+    df["municipio_norm"] = df["municipio"].apply(_normalize_name)
+
+    merged = df.merge(
+        gdf_municipios[["municipio_norm", "geometry"]],
+        on="municipio_norm",
+        how="left",
+    )
+    n_sin_coord = merged["geometry"].isna().sum()
+    if n_sin_coord:
+        print(f"  UNGRD: {n_sin_coord} eventos sin centroide municipal (descartados)")
+
+    merged = merged.dropna(subset=["geometry"])
+    gdf = gpd.GeoDataFrame(merged, geometry="geometry", crs="EPSG:4326")
+    print(f"  UNGRD geocodificado: {len(gdf)} eventos con coordenadas")
+    return gdf
+
+
+# =============================================================================
+# Inventario SGC-SIMMA (inventario espacial, sin fechas temporales)
 # =============================================================================
 
 def download_simma(max_records: int = 5_000) -> gpd.GeoDataFrame:
     """
-    Descarga inventario de movimientos en masa SGC-SIMMA para Antioquia
-    vía ArcGIS REST Feature Service.
+    Descarga inventario de movimientos en masa SGC-SIMMA para Antioquia.
 
-    Portal  : https://datos.sgc.gov.co/datasets/312c8792ddb24954a9d2711bd89d1afe
-    Método  : verificación por geólogos del SGC (campo + teledetección)
-    Licencia: Datos Abiertos Colombia
+    NOTA: este servicio devuelve el inventario espacial de cicatrices de
+    deslizamientos (TIPO, SUBTIPO) pero SIN campo de fecha de ocurrencia.
+    Util como capa de referencia espacial, no para etiquetas temporales.
+    Para etiquetas temporales usar get_ungrd_with_coords() con UNGRD.
 
-    Ventaja sobre UNGRD: incluye eventos sin víctimas humanas
-    (deslizamientos en vías o cultivos), reduciendo el sesgo de reportabilidad.
+    Fuente: https://datos.sgc.gov.co/datasets/312c8792ddb24954a9d2711bd89d1afe
     """
     cache = SPATIAL_DIR / "simma_antioquia.gpkg"
     if cache.exists():
-        print(f"SIMMA cargado desde caché: {cache}")
+        print(f"SIMMA cargado desde cache: {cache}")
         return gpd.read_file(cache)
 
     SPATIAL_DIR.mkdir(parents=True, exist_ok=True)
-    base_url = (
-        "https://services.arcgis.com/uVJRNKDPKhBKqMoQ/arcgis/rest/services/"
-        "Inventario_Movimientos_en_Masa/FeatureServer/0/query"
-    )
+    antioquia = download_antioquia_boundary()
+    bbox = antioquia.total_bounds  # (minx, miny, maxx, maxy)
+
     records = []
     offset = 0
     page_size = 2_000
 
     while len(records) < max_records:
         params = {
-            "where":              "DEPARTAMEN='ANTIOQUIA'",
-            "outFields":          "OBJECTID,FECHA_OCUR,MUNICIPIO,TIPO_MOVI,LATITUD,LONGITUD,FUENTE",
-            "outSR":              "4326",
-            "f":                  "json",
-            "resultOffset":       offset,
-            "resultRecordCount":  page_size,
+            "where":             "1=1",
+            "outFields":         "FID,OBJECTID,TIPO,SUBTIPO,CLAS_MAPA",
+            "outSR":             "4326",
+            "returnGeometry":    "true",
+            "geometryType":      "esriGeometryEnvelope",
+            "geometry":          f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}",
+            "spatialRel":        "esriSpatialRelIntersects",
+            "f":                 "json",
+            "resultOffset":      offset,
+            "resultRecordCount": page_size,
         }
-        resp = requests.get(base_url, params=params, timeout=60)
+        resp = requests.get(_SIMMA_BASE_URL, params=params, timeout=60)
         resp.raise_for_status()
         features = resp.json().get("features", [])
         if not features:
             break
-        records.extend(f["attributes"] for f in features)
+        for feat in features:
+            attrs = feat.get("attributes", {})
+            geo   = feat.get("geometry", {})
+            attrs["LONGITUD"] = geo.get("x")
+            attrs["LATITUD"]  = geo.get("y")
+            records.append(attrs)
         print(f"  SIMMA: {len(records)} registros descargados")
         if len(features) < page_size:
             break
         offset += page_size
 
+    if not records:
+        raise RuntimeError("SIMMA devolvio 0 registros. Verificar endpoint.")
+
     df = pd.DataFrame(records)
-    # FECHA_OCUR viene como epoch milliseconds
-    df["fecha"] = pd.to_datetime(df["FECHA_OCUR"], unit="ms", errors="coerce")
-    df = df.dropna(subset=["LATITUD", "LONGITUD", "fecha"])
+    df = df.dropna(subset=["LATITUD", "LONGITUD"])
     df = df[(df["LATITUD"] != 0) & (df["LONGITUD"] != 0)]
 
     gdf = gpd.GeoDataFrame(
@@ -173,35 +284,34 @@ def download_simma(max_records: int = 5_000) -> gpd.GeoDataFrame:
         crs="EPSG:4326",
     )
     gdf.to_file(cache, driver="GPKG")
-    print(f"SIMMA guardado: {len(gdf)} eventos → {cache}")
+    print(f"SIMMA guardado: {len(gdf)} cicatrices -> {cache}")
     return gdf
 
 
 # =============================================================================
-# Asignación de eventos a cuencas
+# Asignacion de eventos a cuencas
 # =============================================================================
 
 def assign_events_to_cuencas(
-    df_eventos: pd.DataFrame,
+    gdf_eventos: gpd.GeoDataFrame,
     gdf_cuencas: gpd.GeoDataFrame,
-    lat_col: str = "LATITUD",
-    lon_col: str = "LONGITUD",
-) -> pd.DataFrame:
+) -> gpd.GeoDataFrame:
     """
-    Asigna eventos puntuales a cuencas HydroSHEDS por intersección espacial.
+    Asigna eventos puntuales a cuencas HydroSHEDS por interseccion espacial.
 
     Eventos fuera de cualquier cuenca (coordenadas imprecisas o fuera de
     Antioquia) reciben HYBAS_ID = NaN y se descartan del resultado.
 
+    Parameters
+    ----------
+    gdf_eventos : GeoDataFrame con geometria puntual y columna 'fecha'
+    gdf_cuencas : GeoDataFrame de HydroBASINS con columna 'HYBAS_ID'
+
     Returns
     -------
-    df_eventos enriquecido con columna HYBAS_ID (int64).
+    GeoDataFrame de eventos enriquecido con columna HYBAS_ID (int64).
     """
-    gdf_ev = gpd.GeoDataFrame(
-        df_eventos.copy(),
-        geometry=gpd.points_from_xy(df_eventos[lon_col], df_eventos[lat_col]),
-        crs="EPSG:4326",
-    ).to_crs(gdf_cuencas.crs)
+    gdf_ev = gdf_eventos.to_crs(gdf_cuencas.crs)
 
     joined = gpd.sjoin(
         gdf_ev,
@@ -209,12 +319,10 @@ def assign_events_to_cuencas(
         how="left",
         predicate="within",
     )
-    result = df_eventos.copy()
-    result["HYBAS_ID"] = joined["HYBAS_ID"].values
-    n_sin_cuenca = result["HYBAS_ID"].isna().sum()
+    n_sin_cuenca = joined["HYBAS_ID"].isna().sum()
     if n_sin_cuenca:
-        print(f"  Eventos sin cuenca (fuera del polígono): {n_sin_cuenca} descartados")
-    return result.dropna(subset=["HYBAS_ID"])
+        print(f"  Eventos sin cuenca (fuera del poligono): {n_sin_cuenca} descartados")
+    return joined.dropna(subset=["HYBAS_ID"])
 
 
 def build_event_grid(
@@ -224,10 +332,10 @@ def build_event_grid(
     anio_fin: int = 2022,
 ) -> pd.DataFrame:
     """
-    Construye el grid completo (semana × cuenca) con etiquetas binarias.
+    Construye el grid completo (semana x cuenca) con etiquetas binarias.
 
-    Genera el producto cartesiano de todas las semanas ISO del período
-    × todas las cuencas de Antioquia, y marca como 1 las celdas con
+    Genera el producto cartesiano de todas las semanas ISO del periodo
+    x todas las cuencas de Antioquia, y marca como 1 las celdas con
     al menos un evento UNGRD/SIMMA reportado.
 
     Returns
@@ -260,7 +368,7 @@ def build_event_grid(
 
     pct_positivos = 100 * grid["deslizamiento"].mean()
     print(
-        f"Grid (semana × cuenca): {len(grid):,} instancias | "
+        f"Grid (semana x cuenca): {len(grid):,} instancias | "
         f"positivas: {grid['deslizamiento'].sum():,} ({pct_positivos:.2f}%)"
     )
     return grid
@@ -278,15 +386,13 @@ def generate_pseudo_absences(
     area_percentil: float = 0.25,
 ) -> pd.DataFrame:
     """
-    Filtra el grid (semana × cuenca) para construir negativos confiables.
+    Filtra el grid (semana x cuenca) para construir negativos confiables.
 
     Estrategia de 2 criterios combinados (Li et al., 2024, Sci. Reports):
-      1. Precipitación: retiene como negativos solo semanas con
-         precip_acum_14d ≤ P{precip_percentil*100} histórico departamental.
-         Semanas de lluvia intensa pueden tener eventos no reportados.
-      2. Morfología: retiene como negativos solo cuencas con
-         UP_AREA ≤ P{area_percentil*100} km² (headwaters pequeños con
-         menor exposición y menor probabilidad de evento no detectado).
+      1. Precipitacion: retiene como negativos solo semanas con
+         precip_acum_14d <= P{precip_percentil*100} historico departamental.
+      2. Morfologia: retiene como negativos solo cuencas con
+         UP_AREA <= P{area_percentil*100} km^2 (headwaters pequenos).
     Todos los positivos se conservan sin filtro.
 
     Returns
@@ -318,7 +424,7 @@ def generate_pseudo_absences(
         f"Pseudo-ausencias generadas:\n"
         f"  Positivos : {mask_pos.sum():,}\n"
         f"  Negativos : {mask_neg.sum():,} "
-        f"(precip ≤ {precip_threshold:.1f} mm | UP_AREA ≤ {area_threshold:.0f} km²)\n"
+        f"(precip <= {precip_threshold:.1f} mm | UP_AREA <= {area_threshold:.0f} km2)\n"
         f"  Total     : {len(df_out):,}"
     )
     return df_out

@@ -103,7 +103,7 @@ target:
 # ---------------------------------------------------------------------------
 espacial:
   granularidad: "cuenca"       # "departamento" (v1/v2) | "cuenca" (v3)
-  hydrobasins_nivel: 5         # nivel HydroSHEDS — nivel 5 ≈ 100-500 km² por cuenca
+  hydrobasins_nivel: 10        # nivel HydroSHEDS — nivel 10 ≈ 100-500 km² por cuenca (~300 en Antioquia)
   pseudo_absence:
     precip_percentil: 0.25     # semanas con precip ≤ P25 → negativos defensibles
     area_percentil: 0.25       # cuencas con UP_AREA ≤ P25 → "headwaters estables"
