@@ -21,12 +21,12 @@ periodo:
   anio_fin: 2022
 
 # ---------------------------------------------------------------------------
-# Fuentes de datos (IDs Socrata en datos.gov.co)
+# Fuentes de datos
 # ---------------------------------------------------------------------------
 fuentes:
   ideam:
     dataset_id: "s54a-sgyg"
-    descripcion: "Precipitación IDEAM — sensores automáticos (mm)"
+    descripcion: "Precipitación IDEAM — sensores automáticos (mm) [legacy: 3.4% cobertura]"
     limit_por_mes: 5000
 
   ungrd:
@@ -38,6 +38,27 @@ fuentes:
     csv_path: "data/raw/siata_precipitacion.csv"
     activo: false
     descripcion: "Estaciones pluviométricas SIATA — Valle de Aburrá y Antioquia"
+
+  chirps:
+    activo: true
+    descripcion: "CHIRPS v2.0 — precipitación diaria 5.5 km (CHC/UCSB). Sin registro."
+    base_url: "https://data.chc.ucsb.edu/products/CHIRPS-2.0/global_daily/tifs/p05"
+    bbox:
+      lat_min: 5.0
+      lat_max: 8.9
+      lon_min: -77.1
+      lon_max: -73.9
+
+  era5:
+    activo: true
+    descripcion: "ERA5-Land — humedad suelo 9 km (ECMWF/Copernicus). Requiere ~/.cdsapirc."
+    variables:
+      - "volumetric_soil_water_layer_2"
+    bbox:
+      north: 8.9
+      west: -77.1
+      south: 5.0
+      east: -73.9
 
 # ---------------------------------------------------------------------------
 # Filtros de eventos (UNGRD)
@@ -88,17 +109,19 @@ ventanas:
 # ---------------------------------------------------------------------------
 features:
   base:
-    - "precip_acum_14d"        # acumulado 14 días anteriores — feature principal
-    - "precip_max_diario_14d"  # máximo diario en los 14 días — captura intensidad
+    - "precip_acum_14d"        # acumulado 14 días — fuente: CHIRPS (v2) o IDEAM (legacy)
+    - "precip_max_diario_14d"  # máximo diario en 14 días — captura intensidad
     - "precip_dias_lluvia_14d" # días con lluvia > 0 en la ventana
-    - "precip_acum_7d"         # acumulado últimos 7 días — más reciente
+    - "precip_acum_7d"         # acumulado últimos 7 días
     - "precip_acum_3d"         # acumulado últimos 3 días — señal inmediata
-    - "n_estaciones"
+
+  era5:
+    - "soil_moisture_14d"      # humedad suelo media 14 días (m³/m³) — ERA5-Land swvl2
 
   seasonality:
     - "semana_sin"
     - "semana_cos"
-    - "mes_sin"               # mantener mes también — captura bimodalidad Colombia
+    - "mes_sin"               # captura bimodalidad lluvias Colombia
     - "mes_cos"
 
   siata:
@@ -108,6 +131,7 @@ features:
   required_for_model:
     - "precip_acum_14d"
     - "precip_acum_7d"
+    - "soil_moisture_14d"
 
 # ---------------------------------------------------------------------------
 # Calidad de datos
@@ -121,7 +145,7 @@ calidad:
 # Datos
 # ---------------------------------------------------------------------------
 datos:
-  dataset_procesado: "antioquia_deslizamientos_semanal_v1.csv"
+  dataset_procesado: "antioquia_deslizamientos_semanal_v2.csv"
 # ---------------------------------------------------------------------------
 # MLflow
 # ---------------------------------------------------------------------------
@@ -129,8 +153,10 @@ mlflow:
   experiment_name: "antioquia_deslizamientos_semanal"
   db_path: "mlruns/mlflow.db"
   run_tags:
-    dataset_procesado: "antioquia_deslizamientos_semanal_v1.csv"
+    dataset_procesado: "antioquia_deslizamientos_semanal_v2.csv"
     proyecto: "blindaje_territorio"
     equipo: "grupo_mlops"
-    version_config: "2.0.0"
+    version_config: "3.0.0"
     tipo_problema: "clasificacion_binaria"
+    fuente_precip: "chirps_v2"
+    fuente_humedad: "era5land_swvl2"
