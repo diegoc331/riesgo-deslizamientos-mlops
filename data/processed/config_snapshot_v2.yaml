@@ -1,0 +1,136 @@
+# =============================================================================
+# Configuración de alcance — Antioquia Deslizamientos
+# Experimento: clasificación binaria de ocurrencia de deslizamiento
+#
+# Cambio v2.0.0: de multiclase (bajo/medio/alto) a binario (ocurre / no ocurre)
+# Este archivo es la única fuente de verdad para parámetros de negocio.
+# Todo cambio aquí se versiona en Git y se registra en MLflow automáticamente.
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Alcance geográfico
+# ---------------------------------------------------------------------------
+geo:
+  departamento: "antioquia"          # normalizado: minúsculas sin tildes
+
+# ---------------------------------------------------------------------------
+# Alcance temporal
+# ---------------------------------------------------------------------------
+periodo:
+  anio_inicio: 2019
+  anio_fin: 2022
+
+# ---------------------------------------------------------------------------
+# Fuentes de datos (IDs Socrata en datos.gov.co)
+# ---------------------------------------------------------------------------
+fuentes:
+  ideam:
+    dataset_id: "s54a-sgyg"
+    descripcion: "Precipitación IDEAM — sensores automáticos (mm)"
+    limit_por_mes: 5000
+
+  ungrd:
+    dataset_id: "wwkg-r6te"
+    descripcion: "Emergencias UNGRD 2019-2022"
+    max_records: 30000
+
+  siata:
+    csv_path: "data/raw/siata_precipitacion.csv"
+    activo: false
+    descripcion: "Estaciones pluviométricas SIATA — Valle de Aburrá y Antioquia"
+
+# ---------------------------------------------------------------------------
+# Filtros de eventos (UNGRD)
+# Taxonomía conforme a Ley 1523 de 2012 (Gestión del Riesgo, Colombia)
+# ---------------------------------------------------------------------------
+eventos:
+  hidro_keywords:
+    - "avenida torrencial"
+    - "creciente subita"
+    - "inundacion"
+    - "deslizamiento"
+    - "derrumbe"
+    - "movimiento en masa"
+    - "flujo de lodo"
+
+  landslide_keywords:
+    - "deslizamiento"
+    - "derrumbe"
+    - "movimiento en masa"
+    - "flujo de lodo"
+    - "flujo de detritos"
+    - "caida de roca"
+    - "reptacion"
+
+# ---------------------------------------------------------------------------
+# Target binario
+# 0 = no ocurre ningún deslizamiento en los próximos 7 días
+# 1 = ocurre al menos un deslizamiento en los próximos 7 días
+
+# ---------------------------------------------------------------------------
+target:
+  nombre: "deslizamiento"
+  tipo: "binario"
+  clase_positiva: 1
+  clase_positiva_desc: "Ocurre al menos un deslizamiento en los próximos 7 días"
+  clase_negativa: 0
+  clase_negativa_desc: "No ocurre ningún deslizamiento en los próximos 7 días"
+  class_weight: "balanced"
+
+# ---------------------------------------------------------------------------  
+ventanas:
+  precipitacion_dias: 14    # días hacia atrás para acumular precipitación
+  prediccion_dias: 7        # días hacia adelante que predice el target
+  granularidad: "semanal"   # unidad de análisis
+  
+# ---------------------------------------------------------------------------
+# Feature engineering
+# ---------------------------------------------------------------------------
+features:
+  base:
+    - "precip_acum_14d"        # acumulado 14 días anteriores — feature principal
+    - "precip_max_diario_14d"  # máximo diario en los 14 días — captura intensidad
+    - "precip_dias_lluvia_14d" # días con lluvia > 0 en la ventana
+    - "precip_acum_7d"         # acumulado últimos 7 días — más reciente
+    - "precip_acum_3d"         # acumulado últimos 3 días — señal inmediata
+    - "n_estaciones"
+
+  seasonality:
+    - "semana_sin"
+    - "semana_cos"
+    - "mes_sin"               # mantener mes también — captura bimodalidad Colombia
+    - "mes_cos"
+
+  siata:
+    - "siata_precip_acum_14d"
+    - "siata_precip_max_14d"
+
+  required_for_model:
+    - "precip_acum_14d"
+    - "precip_acum_7d"
+
+# ---------------------------------------------------------------------------
+# Calidad de datos
+# ---------------------------------------------------------------------------
+calidad:
+  cobertura_sensor_percentil: 25
+  precip_min_mm: 0
+  precip_max_mm: 500
+
+# ---------------------------------------------------------------------------
+# Datos
+# ---------------------------------------------------------------------------
+datos:
+  dataset_procesado: "antioquia_deslizamientos_semanal_v1.csv"
+# ---------------------------------------------------------------------------
+# MLflow
+# ---------------------------------------------------------------------------
+mlflow:
+  experiment_name: "antioquia_deslizamientos_binario"
+  db_path: "mlruns/mlflow.db"
+  run_tags:
+    dataset_procesado: "antioquia_deslizamientos_semanal_v1.csv"
+    proyecto: "blindaje_territorio"
+    equipo: "grupo_mlops"
+    version_config: "2.0.0"
+    tipo_problema: "clasificacion_binaria"
