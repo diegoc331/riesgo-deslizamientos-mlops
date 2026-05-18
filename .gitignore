@@ -1,5 +1,4 @@
 CLAUDE.md
-create_notebook_04.py
 mlruns/artifacts_tmp/
 data/raw/spatial/
 data/raw/chirps_antioquia_daily.csv
@@ -11,3 +10,9 @@ __pycache__/
 .prefect/
 .env
 *.db-journal
+.claude/
+data/processed/*.parquet
+data/processed/*.csv
+mlruns/
+notebooks/mlruns/
+scripts/*.log
