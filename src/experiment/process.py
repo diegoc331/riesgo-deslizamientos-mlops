@@ -280,6 +280,17 @@ def aggregate_weekly_chirps(df: pd.DataFrame) -> pd.DataFrame:
         .reset_index()
     )
 
+    # Shift de 1 semana: la fila para la semana W ahora contiene el rolling
+    # calculado al cierre de W-1, es decir, datos disponibles antes de que
+    # empiece la ventana de prediccion. Evita leakage concurrente.
+    # Las features de estacionalidad NO se shiftean: la posicion en el
+    # calendario es conocida de antemano.
+    _FEAT_COLS = [
+        "precip_acum_14d", "precip_acum_7d", "precip_acum_3d",
+        "precip_max_diario_14d", "precip_dias_lluvia_14d",
+    ]
+    semanal[_FEAT_COLS] = semanal[_FEAT_COLS].shift(1)
+
     semanal["mes"]        = semanal["fecha_fin_semana"].dt.month
     semanal["semana_sin"] = np.sin(2 * np.pi * semanal["fecha_fin_semana"].dt.isocalendar().week / 52)
     semanal["semana_cos"] = np.cos(2 * np.pi * semanal["fecha_fin_semana"].dt.isocalendar().week / 52)
@@ -346,9 +357,13 @@ def aggregate_weekly_era5(df: pd.DataFrame, ventana_dias: int = 14) -> pd.DataFr
         .reset_index()
     )
 
+    # Shift de 1 semana: igual que CHIRPS, la humedad de suelo para la semana
+    # W refleja el rolling calculado al cierre de W-1 (sin leakage concurrente).
+    semanal["soil_moisture_14d"] = semanal["soil_moisture_14d"].shift(1)
+
     print(
         f"ERA5-Land semanal: {len(semanal)} semanas | "
-        f"soil_moisture_14d media={semanal['soil_moisture_14d'].mean():.4f} m³/m³"
+        f"soil_moisture_14d media={semanal['soil_moisture_14d'].mean():.4f} m3/m3"
     )
     return semanal
 

@@ -22,4 +22,5 @@ dependencies = [
     "netCDF4>=1.6",
     "pulearn>=0.0.3",
     "geopandas>=0.14",
+    "prefect>=3.7.1",
 ]

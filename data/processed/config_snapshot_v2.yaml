@@ -21,12 +21,12 @@ periodo:
   anio_fin: 2022
 
 # ---------------------------------------------------------------------------
-# Fuentes de datos
+# Fuentes de datos (IDs Socrata en datos.gov.co)
 # ---------------------------------------------------------------------------
 fuentes:
   ideam:
     dataset_id: "s54a-sgyg"
-    descripcion: "Precipitación IDEAM — sensores automáticos (mm) [legacy: 3.4% cobertura]"
+    descripcion: "Precipitación IDEAM — sensores automáticos (mm)"
     limit_por_mes: 5000
 
   ungrd:
@@ -38,27 +38,6 @@ fuentes:
     csv_path: "data/raw/siata_precipitacion.csv"
     activo: false
     descripcion: "Estaciones pluviométricas SIATA — Valle de Aburrá y Antioquia"
-
-  chirps:
-    activo: true
-    descripcion: "CHIRPS v2.0 — precipitación diaria 5.5 km (CHC/UCSB). Sin registro."
-    base_url: "https://data.chc.ucsb.edu/products/CHIRPS-2.0/global_daily/tifs/p05"
-    bbox:
-      lat_min: 5.0
-      lat_max: 8.9
-      lon_min: -77.1
-      lon_max: -73.9
-
-  era5:
-    activo: true
-    descripcion: "ERA5-Land — humedad suelo 9 km (ECMWF/Copernicus). Requiere ~/.cdsapirc."
-    variables:
-      - "volumetric_soil_water_layer_2"
-    bbox:
-      north: 8.9
-      west: -77.1
-      south: 5.0
-      east: -73.9
 
 # ---------------------------------------------------------------------------
 # Filtros de eventos (UNGRD)
@@ -98,17 +77,7 @@ target:
   clase_negativa_desc: "No ocurre ningún deslizamiento en los próximos 7 días"
   class_weight: "balanced"
 
-# ---------------------------------------------------------------------------
-# Configuración espacial (Fase 2)
-# ---------------------------------------------------------------------------
-espacial:
-  granularidad: "cuenca"       # "departamento" (v1/v2) | "cuenca" (v3)
-  hydrobasins_nivel: 10        # nivel HydroSHEDS — nivel 10 ≈ 100-500 km² por cuenca (~300 en Antioquia)
-  pseudo_absence:
-    precip_percentil: 0.25     # semanas con precip ≤ P25 → negativos defensibles
-    area_percentil: 0.25       # cuencas con UP_AREA ≤ P25 → "headwaters estables"
-
-# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------  
 ventanas:
   precipitacion_dias: 14    # días hacia atrás para acumular precipitación
   prediccion_dias: 7        # días hacia adelante que predice el target
@@ -119,25 +88,17 @@ ventanas:
 # ---------------------------------------------------------------------------
 features:
   base:
-    - "precip_acum_14d"        # acumulado 14 días — fuente: CHIRPS (v2) o IDEAM (legacy)
-    - "precip_max_diario_14d"  # máximo diario en 14 días — captura intensidad
+    - "precip_acum_14d"        # acumulado 14 días anteriores — feature principal
+    - "precip_max_diario_14d"  # máximo diario en los 14 días — captura intensidad
     - "precip_dias_lluvia_14d" # días con lluvia > 0 en la ventana
-    - "precip_acum_7d"         # acumulado últimos 7 días
+    - "precip_acum_7d"         # acumulado últimos 7 días — más reciente
     - "precip_acum_3d"         # acumulado últimos 3 días — señal inmediata
-
-  hidrobasins:
-    - "SUB_AREA"   # área de la sub-cuenca (km²) — tamaño de la cuenca
-    - "UP_AREA"    # área de drenaje acumulada aguas arriba (km²)
-    - "DIST_MAIN"  # distancia al cauce principal (km)
-    - "ORDER"      # orden de Strahler del cauce — proxy de madurez geomorfológica
-
-  era5:
-    - "soil_moisture_14d"      # humedad suelo media 14 días (m³/m³) — ERA5-Land swvl2
+    - "n_estaciones"
 
   seasonality:
     - "semana_sin"
     - "semana_cos"
-    - "mes_sin"               # captura bimodalidad lluvias Colombia
+    - "mes_sin"               # mantener mes también — captura bimodalidad Colombia
     - "mes_cos"
 
   siata:
@@ -147,7 +108,6 @@ features:
   required_for_model:
     - "precip_acum_14d"
     - "precip_acum_7d"
-    - "soil_moisture_14d"
 
 # ---------------------------------------------------------------------------
 # Calidad de datos
@@ -161,44 +121,16 @@ calidad:
 # Datos
 # ---------------------------------------------------------------------------
 datos:
-  dataset_procesado: "antioquia_deslizamientos_semanal_v2.csv"
+  dataset_procesado: "antioquia_deslizamientos_semanal_v1.csv"
 # ---------------------------------------------------------------------------
 # MLflow
 # ---------------------------------------------------------------------------
 mlflow:
-  experiment_name: "antioquia_deslizamientos_semanal"
+  experiment_name: "antioquia_deslizamientos_binario"
   db_path: "mlruns/mlflow.db"
   run_tags:
-    dataset_procesado: "antioquia_deslizamientos_semanal_v2.csv"
+    dataset_procesado: "antioquia_deslizamientos_semanal_v1.csv"
     proyecto: "blindaje_territorio"
     equipo: "grupo_mlops"
-    version_config: "3.0.0"
+    version_config: "2.0.0"
     tipo_problema: "clasificacion_binaria"
-    fuente_precip: "chirps_v2"
-    fuente_humedad: "era5land_swvl2"
-
-# ---------------------------------------------------------------------------
-# Prefect — orquestación del pipeline semanal
-# ---------------------------------------------------------------------------
-prefect:
-  work_pool: "local-process"
-  flow_name: "antioquia-deslizamientos-training"
-  schedule_cron: "0 6 * * 1"   # cada lunes a las 6am
-  retries: 2
-  retry_delay_seconds: 300
-
-# ---------------------------------------------------------------------------
-# Hiperparámetros óptimos — encontrados en notebook 04 (RandomizedSearch, 20 iter)
-# CV de panel 4 folds sobre grid 2019-2022 (7,630 instancias, 462 positivos)
-# ---------------------------------------------------------------------------
-modelos:
-  logistic_regression:
-    C: 0.57            # AUC grid completo 2021-2022: 0.5686 | AUC CV PA: 0.9789
-    solver: "liblinear"
-  random_forest:
-    n_estimators: 183  # AUC grid completo 2021-2022: 0.5817 | AUC CV PA: 0.9933
-    max_depth: 6
-    min_samples_leaf: 2
-  bagging_pu:
-    n_estimators: 19   # AUC grid completo 2021-2022: 0.6088 | AUC CV PA: 0.9931 (mejor)
-    estimator_max_depth: 5

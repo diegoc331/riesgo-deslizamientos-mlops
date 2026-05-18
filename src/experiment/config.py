@@ -150,6 +150,7 @@ class TargetConfig(BaseModel):
 
 class FeaturesConfig(BaseModel):
     base: list[str]
+    hidrobasins: list[str] = []
     era5: list[str] = []
     seasonality: list[str]
     siata: list[str]
@@ -166,9 +167,40 @@ class MLflowConfig(BaseModel):
     experiment_name: str
     db_path: str
     run_tags: dict[str, str] = {}
-    
+
+
 class DatosConfig(BaseModel):
     dataset_procesado: str
+
+
+class PrefectConfig(BaseModel):
+    work_pool: str = "local-process"
+    flow_name: str = "antioquia-deslizamientos-training"
+    schedule_cron: str = "0 6 * * 1"
+    retries: int = 2
+    retry_delay_seconds: int = 300
+
+
+class LogisticRegressionConfig(BaseModel):
+    C: float = 1.0
+    solver: str = "lbfgs"
+
+
+class RandomForestConfig(BaseModel):
+    n_estimators: int = 100
+    max_depth: int = 6
+    min_samples_leaf: int = 1
+
+
+class BaggingPuConfig(BaseModel):
+    n_estimators: int = 15
+    estimator_max_depth: int = 6
+
+
+class ModelosConfig(BaseModel):
+    logistic_regression: LogisticRegressionConfig = LogisticRegressionConfig()
+    random_forest: RandomForestConfig = RandomForestConfig()
+    bagging_pu: BaggingPuConfig = BaggingPuConfig()
 
 
 # ---------------------------------------------------------------------------
@@ -189,6 +221,8 @@ class ExperimentConfig(BaseModel):
     features: FeaturesConfig
     calidad: CalidadConfig
     mlflow: MLflowConfig
+    prefect: PrefectConfig = PrefectConfig()
+    modelos: ModelosConfig = ModelosConfig()
 
     _project_root: Optional[Path] = None
 
@@ -209,7 +243,7 @@ class ExperimentConfig(BaseModel):
     @property
     def all_features(self) -> list[str]:
         """Lista completa de features activas según configuración de fuentes."""
-        feats = self.features.base + self.features.seasonality
+        feats = self.features.base + self.features.hidrobasins + self.features.seasonality
         if self.fuentes.era5.activo:
             feats += self.features.era5
         if self.fuentes.siata.activo:
