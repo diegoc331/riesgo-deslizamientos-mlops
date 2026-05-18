@@ -1,22 +1,13 @@
-# Python-generated files
+CLAUDE.md
+create_notebook_04.py
+mlruns/artifacts_tmp/
+data/raw/spatial/
+data/raw/chirps_antioquia_daily.csv
+data/raw/ideam_precipitaciones.csv
+data/raw/ungrd_emergencias.csv
 __pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
-
-# Virtual environments
-.venv
-
-# Datos descargados
-data/raw/
-data/processed/
-
-# MLflow y notebooks
-mlruns/
-.ipynb_checkpoints/
-*.db
-
-# Variables de entorno (credenciales, API keys)
+*.pyc
+*.pyo
+.prefect/
 .env
+*.db-journal
