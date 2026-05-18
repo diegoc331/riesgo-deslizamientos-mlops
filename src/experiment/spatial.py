@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import io
 import unicodedata
+import warnings
 import zipfile
 from pathlib import Path
 
@@ -384,6 +385,7 @@ def generate_pseudo_absences(
     gdf_cuencas: gpd.GeoDataFrame,
     precip_percentil: float = 0.25,
     area_percentil: float = 0.25,
+    strict_mode: bool = True,
 ) -> pd.DataFrame:
     """
     Filtra el grid (semana x cuenca) para construir negativos confiables.
@@ -395,10 +397,35 @@ def generate_pseudo_absences(
          UP_AREA <= P{area_percentil*100} km^2 (headwaters pequenos).
     Todos los positivos se conservan sin filtro.
 
+    Parameters
+    ----------
+    strict_mode : bool, default True
+        Si True, lanza ValueError cuando se detecta que precip_acum_14d
+        contiene conteos de eventos en lugar de mm de precipitacion real
+        (sesgo circular: el target contamina la seleccion de negativos).
+        Si False, lanza UserWarning y continua con el calculo sesgado.
+
     Returns
     -------
     DataFrame filtrado con positivos + negativos defensibles.
     """
+    # --- Guardia contra proxy circular ---
+    precip_vals = df_precip_semanal["precip_acum_14d"]
+    _max_val = precip_vals.max()
+    _is_integer_like = (precip_vals % 1 == 0).all()
+    if _is_integer_like and _max_val < 20:
+        _msg = (
+            "SESGO CIRCULAR DETECTADO en generate_pseudo_absences(): "
+            f"'precip_acum_14d' parece ser un conteo de eventos "
+            f"(max={_max_val:.0f}, todos enteros), no precipitacion en mm. "
+            "Usar n_eventos como proxy contamina la seleccion de negativos con el target. "
+            "Soluciones: (1) proporcione datos reales de CHIRPS/IDEAM, "
+            "o (2) use df_grid.copy() directamente sin filtrar pseudo-ausencias."
+        )
+        if strict_mode:
+            raise ValueError(_msg)
+        warnings.warn(_msg, UserWarning, stacklevel=2)
+
     precip_threshold = df_precip_semanal["precip_acum_14d"].quantile(precip_percentil)
     area_threshold   = gdf_cuencas["UP_AREA"].quantile(area_percentil)
 
