@@ -125,6 +125,12 @@ features:
     - "precip_acum_7d"         # acumulado últimos 7 días
     - "precip_acum_3d"         # acumulado últimos 3 días — señal inmediata
 
+  hidrobasins:
+    - "SUB_AREA"   # área de la sub-cuenca (km²) — tamaño de la cuenca
+    - "UP_AREA"    # área de drenaje acumulada aguas arriba (km²)
+    - "DIST_MAIN"  # distancia al cauce principal (km)
+    - "ORDER"      # orden de Strahler del cauce — proxy de madurez geomorfológica
+
   era5:
     - "soil_moisture_14d"      # humedad suelo media 14 días (m³/m³) — ERA5-Land swvl2
 
@@ -170,3 +176,29 @@ mlflow:
     tipo_problema: "clasificacion_binaria"
     fuente_precip: "chirps_v2"
     fuente_humedad: "era5land_swvl2"
+
+# ---------------------------------------------------------------------------
+# Prefect — orquestación del pipeline semanal
+# ---------------------------------------------------------------------------
+prefect:
+  work_pool: "local-process"
+  flow_name: "antioquia-deslizamientos-training"
+  schedule_cron: "0 6 * * 1"   # cada lunes a las 6am
+  retries: 2
+  retry_delay_seconds: 300
+
+# ---------------------------------------------------------------------------
+# Hiperparámetros óptimos — encontrados en notebook 04 (RandomizedSearch, 20 iter)
+# CV de panel 4 folds sobre grid 2019-2022 (7,630 instancias, 462 positivos)
+# ---------------------------------------------------------------------------
+modelos:
+  logistic_regression:
+    C: 0.57            # AUC grid completo 2021-2022: 0.5686 | AUC CV PA: 0.9789
+    solver: "liblinear"
+  random_forest:
+    n_estimators: 183  # AUC grid completo 2021-2022: 0.5817 | AUC CV PA: 0.9933
+    max_depth: 6
+    min_samples_leaf: 2
+  bagging_pu:
+    n_estimators: 19   # AUC grid completo 2021-2022: 0.6088 | AUC CV PA: 0.9931 (mejor)
+    estimator_max_depth: 5
