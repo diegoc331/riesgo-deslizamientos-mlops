@@ -1,0 +1,27 @@
+{
+  "logistic_regression": {
+    "clf__C": 0.5741157902710026,
+    "clf__solver": "liblinear",
+    "auc_cv_pa": 0.9789,
+    "auc_full_grid": 0.5686,
+    "recall_full": 0.9401,
+    "precision_full": 0.0067
+  },
+  "random_forest": {
+    "clf__max_depth": 6,
+    "clf__min_samples_leaf": 2,
+    "clf__n_estimators": 183,
+    "auc_cv_pa": 0.9933,
+    "auc_full_grid": 0.5817,
+    "recall_full": 0.9701,
+    "precision_full": 0.0061
+  },
+  "bagging_pu": {
+    "clf__estimator__max_depth": 5,
+    "clf__n_estimators": 19,
+    "auc_cv_pa": 0.9931,
+    "auc_full_grid": 0.6088,
+    "recall_full": 0.9731,
+    "precision_full": 0.006
+  }
+}
