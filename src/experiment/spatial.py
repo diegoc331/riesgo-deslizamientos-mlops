@@ -30,7 +30,7 @@ import geopandas as gpd
 import pandas as pd
 import requests
 
-RAW_DIR    = Path(__file__).parents[2] / "data" / "raw"
+RAW_DIR = Path(__file__).parents[2] / "data" / "raw"
 SPATIAL_DIR = RAW_DIR / "spatial"
 
 # URL corregida del servicio SIMMA (validada 2025-05)
@@ -52,6 +52,7 @@ def _normalize_name(s: str) -> str:
 # =============================================================================
 # Descarga de capas geograficas base
 # =============================================================================
+
 
 def download_antioquia_boundary() -> gpd.GeoDataFrame:
     """
@@ -123,7 +124,7 @@ def download_hydrobasins(nivel: int = 10) -> gpd.GeoDataFrame:
     gdf_sa = gdf_sa.to_crs(antioquia.crs)
 
     bbox = antioquia.total_bounds
-    gdf_bbox = gdf_sa.cx[bbox[0]:bbox[2], bbox[1]:bbox[3]]
+    gdf_bbox = gdf_sa.cx[bbox[0] : bbox[2], bbox[1] : bbox[3]]
     gdf = gpd.clip(gdf_bbox, antioquia)
     gdf = gdf[gdf.geometry.area > 0].copy()
 
@@ -135,6 +136,7 @@ def download_hydrobasins(nivel: int = 10) -> gpd.GeoDataFrame:
 # =============================================================================
 # Centroides municipales (para geocodificar eventos UNGRD)
 # =============================================================================
+
 
 def download_municipio_centroids() -> gpd.GeoDataFrame:
     """
@@ -219,6 +221,7 @@ def get_ungrd_with_coords(
 # Inventario SGC-SIMMA (inventario espacial, sin fechas temporales)
 # =============================================================================
 
+
 def download_simma(max_records: int = 5_000) -> gpd.GeoDataFrame:
     """
     Descarga inventario de movimientos en masa SGC-SIMMA para Antioquia.
@@ -245,15 +248,15 @@ def download_simma(max_records: int = 5_000) -> gpd.GeoDataFrame:
 
     while len(records) < max_records:
         params = {
-            "where":             "1=1",
-            "outFields":         "FID,OBJECTID,TIPO,SUBTIPO,CLAS_MAPA",
-            "outSR":             "4326",
-            "returnGeometry":    "true",
-            "geometryType":      "esriGeometryEnvelope",
-            "geometry":          f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}",
-            "spatialRel":        "esriSpatialRelIntersects",
-            "f":                 "json",
-            "resultOffset":      offset,
+            "where": "1=1",
+            "outFields": "FID,OBJECTID,TIPO,SUBTIPO,CLAS_MAPA",
+            "outSR": "4326",
+            "returnGeometry": "true",
+            "geometryType": "esriGeometryEnvelope",
+            "geometry": f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}",
+            "spatialRel": "esriSpatialRelIntersects",
+            "f": "json",
+            "resultOffset": offset,
             "resultRecordCount": page_size,
         }
         resp = requests.get(_SIMMA_BASE_URL, params=params, timeout=60)
@@ -263,9 +266,9 @@ def download_simma(max_records: int = 5_000) -> gpd.GeoDataFrame:
             break
         for feat in features:
             attrs = feat.get("attributes", {})
-            geo   = feat.get("geometry", {})
+            geo = feat.get("geometry", {})
             attrs["LONGITUD"] = geo.get("x")
-            attrs["LATITUD"]  = geo.get("y")
+            attrs["LATITUD"] = geo.get("y")
             records.append(attrs)
         print(f"  SIMMA: {len(records)} registros descargados")
         if len(features) < page_size:
@@ -292,6 +295,7 @@ def download_simma(max_records: int = 5_000) -> gpd.GeoDataFrame:
 # =============================================================================
 # Asignacion de eventos a cuencas
 # =============================================================================
+
 
 def assign_events_to_cuencas(
     gdf_eventos: gpd.GeoDataFrame,
@@ -347,9 +351,7 @@ def build_event_grid(
     df["anio_semana"] = df["fecha"].dt.to_period("W")
 
     eventos_por_cuenca = (
-        df.groupby(["anio_semana", "HYBAS_ID"])
-        .size()
-        .reset_index(name="n_eventos")
+        df.groupby(["anio_semana", "HYBAS_ID"]).size().reset_index(name="n_eventos")
     )
 
     semanas = pd.period_range(
@@ -364,7 +366,7 @@ def build_event_grid(
     ).to_frame(index=False)
 
     grid = grid.merge(eventos_por_cuenca, on=["anio_semana", "HYBAS_ID"], how="left")
-    grid["n_eventos"]     = grid["n_eventos"].fillna(0).astype(int)
+    grid["n_eventos"] = grid["n_eventos"].fillna(0).astype(int)
     grid["deslizamiento"] = (grid["n_eventos"] > 0).astype(int)
 
     pct_positivos = 100 * grid["deslizamiento"].mean()
@@ -378,6 +380,7 @@ def build_event_grid(
 # =============================================================================
 # Pseudo-ausencias defensibles
 # =============================================================================
+
 
 def generate_pseudo_absences(
     df_grid: pd.DataFrame,
@@ -427,7 +430,7 @@ def generate_pseudo_absences(
         warnings.warn(_msg, UserWarning, stacklevel=2)
 
     precip_threshold = df_precip_semanal["precip_acum_14d"].quantile(precip_percentil)
-    area_threshold   = gdf_cuencas["UP_AREA"].quantile(area_percentil)
+    area_threshold = gdf_cuencas["UP_AREA"].quantile(area_percentil)
 
     low_precip_semanas = set(
         df_precip_semanal.loc[
@@ -441,9 +444,9 @@ def generate_pseudo_absences(
 
     mask_pos = df_grid["deslizamiento"] == 1
     mask_neg = (
-        (df_grid["deslizamiento"] == 0) &
-        df_grid["anio_semana"].isin(low_precip_semanas) &
-        df_grid["HYBAS_ID"].isin(stable_cuencas)
+        (df_grid["deslizamiento"] == 0)
+        & df_grid["anio_semana"].isin(low_precip_semanas)
+        & df_grid["HYBAS_ID"].isin(stable_cuencas)
     )
 
     df_out = df_grid[mask_pos | mask_neg].copy()

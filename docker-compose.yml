@@ -1,0 +1,54 @@
+services:
+
+  # --------------------------------------------------------------------------
+  # Servidor MLflow — tracking + model registry
+  # --------------------------------------------------------------------------
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.13.0
+    container_name: deslizamientos-mlflow
+    ports:
+      - "5001:5000"
+    volumes:
+      - ./mlruns:/mlflow/mlruns
+    environment:
+      MLFLOW_BACKEND_STORE_URI: sqlite:////mlflow/mlruns/mlflow.db
+      MLFLOW_DEFAULT_ARTIFACT_ROOT: /mlflow/mlruns
+    command: >
+      mlflow server
+      --backend-store-uri sqlite:////mlflow/mlruns/mlflow.db
+      --default-artifact-root /mlflow/mlruns
+      --host 0.0.0.0
+      --port 5000
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  # --------------------------------------------------------------------------
+  # API FastAPI — serving de predicciones
+  # --------------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: deslizamientos-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./mlruns:/app/mlruns          # comparte MLflow DB con el servicio mlflow
+      - ./logs:/app/logs              # logs de predicciones para monitoreo
+      - ./data/processed:/app/data/processed  # estadísticas de drift
+    environment:
+      PYTHONUNBUFFERED: "1"
+    depends_on:
+      mlflow:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: on-failure

@@ -22,7 +22,7 @@ RAW_DIR = Path(__file__).parents[2] / "data" / "raw"
 BASE_URL = "https://www.datos.gov.co/resource/{dataset_id}.json"
 
 # Dataset IDs verificados y funcionales
-IDEAM_PRECIP_ID  = "s54a-sgyg"
+IDEAM_PRECIP_ID = "s54a-sgyg"
 UNGRD_EVENTOS_ID = "wwkg-r6te"
 
 # Registros máximos por mes IDEAM — suficientes para cubrir la mayoría
@@ -99,7 +99,9 @@ def download_ideam(
     return df
 
 
-def _socrata_paged(dataset_id: str, params: dict, max_records: int = 30_000) -> list[dict]:
+def _socrata_paged(
+    dataset_id: str, params: dict, max_records: int = 30_000
+) -> list[dict]:
     """Descarga paginada genérica."""
     records: list[dict] = []
     offset = 0
@@ -153,6 +155,7 @@ def load_ungrd() -> pd.DataFrame:
 # CHIRPS v2.0 — precipitación diaria satelital (sin registro)
 # =============================================================================
 
+
 def download_chirps(
     anio_inicio: int = 2019,
     anio_fin: int = 2022,
@@ -175,7 +178,7 @@ def download_chirps(
     try:
         import gzip
         import io
-        import rasterio
+        import rasterio  # noqa: F401
         from rasterio.io import MemoryFile
         from rasterio.windows import from_bounds
     except ImportError:
@@ -198,8 +201,10 @@ def download_chirps(
         print(f"CHIRPS ya completo: {len(df_existing):,} días en caché.")
         return df_existing
 
-    print(f"Descargando CHIRPS: {len(pending)} días pendientes "
-          f"(de {len(date_range)} totales)...")
+    print(
+        f"Descargando CHIRPS: {len(pending)} días pendientes "
+        f"(de {len(date_range)} totales)..."
+    )
 
     BASE = "https://data.chc.ucsb.edu/products/CHIRPS-2.0/global_daily/tifs/p05"
     new_records = []
@@ -217,7 +222,9 @@ def download_chirps(
                 tif_bytes = gz_file.read()
             with MemoryFile(tif_bytes) as memfile:
                 with memfile.open() as src:
-                    window = from_bounds(lon_min, lat_min, lon_max, lat_max, src.transform)
+                    window = from_bounds(
+                        lon_min, lat_min, lon_max, lat_max, src.transform
+                    )
                     data = src.read(1, window=window, masked=True)
                     if data.count() > 0:
                         valid = data.compressed()
@@ -231,7 +238,9 @@ def download_chirps(
         new_records.append({"fecha": date, "precip_mm": precip})
 
         if i % 100 == 0 or i == len(pending):
-            print(f"  [{i:4d}/{len(pending)}] {date.date()} — {precip:.2f} mm", flush=True)
+            print(
+                f"  [{i:4d}/{len(pending)}] {date.date()} — {precip:.2f} mm", flush=True
+            )
 
     df_new = pd.DataFrame(new_records)
     df_new["fecha"] = pd.to_datetime(df_new["fecha"])
@@ -259,6 +268,7 @@ def load_chirps(anio_inicio: int = 2019, anio_fin: int = 2022) -> pd.DataFrame:
 # =============================================================================
 # ERA5-Land — humedad de suelo (requiere cuenta Copernicus CDS)
 # =============================================================================
+
 
 def download_era5(
     anio_inicio: int = 2019,
@@ -314,9 +324,9 @@ def download_era5(
                 "variable": variables,
                 "year": str(year),
                 "month": [str(m).zfill(2) for m in range(1, 13)],
-                "day":   [str(d).zfill(2) for d in range(1, 32)],
-                "time":  "00:00",
-                "area":  area,
+                "day": [str(d).zfill(2) for d in range(1, 32)],
+                "time": "00:00",
+                "area": area,
                 "format": "netcdf",
             },
             str(nc_path),
@@ -326,15 +336,20 @@ def download_era5(
     records = []
     for nc_path in nc_files:
         import numpy as np
+
         ds = xr.open_dataset(nc_path)
         # swvl2 o primer nombre de variable disponible
         var_name = "swvl2" if "swvl2" in ds else next(iter(ds.data_vars))
         da = ds[var_name].mean(dim=["latitude", "longitude"])
         for t_val, sm_val in zip(da.time.values, da.values):
-            records.append({
-                "fecha": pd.Timestamp(t_val).normalize(),
-                "soil_moisture_m3m3": float(sm_val) if not np.isnan(sm_val) else np.nan,
-            })
+            records.append(
+                {
+                    "fecha": pd.Timestamp(t_val).normalize(),
+                    "soil_moisture_m3m3": float(sm_val)
+                    if not np.isnan(sm_val)
+                    else np.nan,
+                }
+            )
         ds.close()
 
     df = pd.DataFrame(records)

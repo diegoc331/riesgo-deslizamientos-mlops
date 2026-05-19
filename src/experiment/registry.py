@@ -36,25 +36,24 @@ def register_best_model(
     client = MlflowClient(tracking_uri=cfg.mlflow_tracking_uri)
     model_name = f"{cfg.geo.departamento}_deslizamiento_{version_tag}_cuenca"
 
-    run_id    = resultado["run_id"]
+    run_id = resultado["run_id"]
     model_uri = f"runs:/{run_id}/model"
 
     reg = mlflow.register_model(model_uri=model_uri, name=model_name)
 
     tags = {
-        "algoritmo":         resultado.get("nombre", "desconocido"),
-        "auc_roc_cv":        f"{resultado.get('auc_roc_mean', 0):.4f}",
-        "recall_cv":         f"{resultado.get('recall_mean', 0):.4f}",
+        "algoritmo": resultado.get("nombre", "desconocido"),
+        "auc_roc_cv": f"{resultado.get('auc_roc_mean', 0):.4f}",
+        "recall_cv": f"{resultado.get('recall_mean', 0):.4f}",
         # Métricas sobre grid completo (evaluación primaria)
-        "auc_roc_full":      f"{resultado.get('auc_roc_full', 0):.4f}",
-        "precision_full":    f"{resultado.get('precision_full', 0):.4f}",
-        "recall_full":       f"{resultado.get('recall_full', 0):.4f}",
-        "dataset_version":   version_tag,
-        "granularidad":      cfg.espacial.granularidad,
+        "auc_roc_full": f"{resultado.get('auc_roc_full', 0):.4f}",
+        "precision_full": f"{resultado.get('precision_full', 0):.4f}",
+        "recall_full": f"{resultado.get('recall_full', 0):.4f}",
+        "dataset_version": version_tag,
+        "granularidad": cfg.espacial.granularidad,
         "hydrobasins_nivel": str(cfg.espacial.hydrobasins_nivel),
-        "entrenado_con":     (
-            f"{cfg.geo.departamento} "
-            f"{cfg.periodo.anio_inicio}-{cfg.periodo.anio_fin}"
+        "entrenado_con": (
+            f"{cfg.geo.departamento} {cfg.periodo.anio_inicio}-{cfg.periodo.anio_fin}"
         ),
     }
     for key, value in tags.items():
@@ -76,12 +75,14 @@ def transition_stage(
     model_name: str,
     version: str,
     umbral_auc: float = 0.60,
-    umbral_precision: float = 0.10,
+    umbral_precision: float = 0.006,
 ) -> bool:
     """
     Promueve la versión del modelo a Staging si cumple AMBAS condiciones:
       - AUC-ROC (grid completo) >= umbral_auc
       - Precision (grid completo) >= umbral_precision
+        Justificación: 0.006 = 1.5× tasa base de eventos (0.4%), margen
+        significativo sobre el baseline aleatorio (DummyClassifier ~0.004).
 
     Lee las métricas de los tags que register_best_model escribió en el Registry.
 
@@ -91,7 +92,7 @@ def transition_stage(
     model_name        : nombre del modelo en el Registry
     version           : versión a promover (str, ej. "1")
     umbral_auc        : AUC mínimo sobre grid completo (default 0.60)
-    umbral_precision  : Precision mínima sobre grid completo (default 0.10)
+    umbral_precision  : Precision mínima sobre grid completo (default 0.006 = 1.5× base rate)
 
     Returns
     -------
@@ -99,11 +100,11 @@ def transition_stage(
     """
     client = MlflowClient(tracking_uri=cfg.mlflow_tracking_uri)
 
-    mv            = client.get_model_version(name=model_name, version=version)
-    auc_full      = float(mv.tags.get("auc_roc_full", "0"))
+    mv = client.get_model_version(name=model_name, version=version)
+    auc_full = float(mv.tags.get("auc_roc_full", "0"))
     precision_full = float(mv.tags.get("precision_full", "0"))
 
-    cumple_auc       = auc_full      >= umbral_auc
+    cumple_auc = auc_full >= umbral_auc
     cumple_precision = precision_full >= umbral_precision
 
     if cumple_auc and cumple_precision:

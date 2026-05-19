@@ -40,7 +40,7 @@ def panel_time_splits(df: pd.DataFrame, n_splits: int = 4):
 
     for train_sem_idx, val_sem_idx in tss.split(range(n_sem)):
         train_semanas = {semanas_unicas[i] for i in train_sem_idx}
-        val_semanas   = {semanas_unicas[i] for i in val_sem_idx}
+        val_semanas = {semanas_unicas[i] for i in val_sem_idx}
 
         # Aserción de disjunción — falla inmediatamente si hay solapamiento
         solapadas = train_semanas & val_semanas
@@ -50,7 +50,7 @@ def panel_time_splits(df: pd.DataFrame, n_splits: int = 4):
         )
 
         train_rows = df.index[df["anio_semana"].isin(train_semanas)].tolist()
-        val_rows   = df.index[df["anio_semana"].isin(val_semanas)].tolist()
+        val_rows = df.index[df["anio_semana"].isin(val_semanas)].tolist()
         yield train_rows, val_rows
 
 
@@ -82,18 +82,21 @@ def evaluar_con_panel_cv(
       auc_roc, f1, precision, recall
     """
     metricas: dict[str, list[float]] = {
-        "auc_roc": [], "f1": [], "precision": [], "recall": []
+        "auc_roc": [],
+        "f1": [],
+        "precision": [],
+        "recall": [],
     }
 
     for fold, (train_idx, val_idx) in enumerate(
         panel_time_splits(df_ref, n_splits=n_splits), 1
     ):
         X_tr, y_tr = X.loc[train_idx], y.loc[train_idx]
-        X_va, y_va = X.loc[val_idx],   y.loc[val_idx]
+        X_va, y_va = X.loc[val_idx], y.loc[val_idx]
 
         # Aserción de no-solapamiento temporal a nivel de filas
         sem_train = set(df_ref.loc[train_idx, "anio_semana"])
-        sem_val   = set(df_ref.loc[val_idx,   "anio_semana"])
+        sem_val = set(df_ref.loc[val_idx, "anio_semana"])
         assert len(sem_train & sem_val) == 0, (
             f"Fold {fold}: {len(sem_train & sem_val)} semanas solapadas "
             f"entre train y val — data leakage."
@@ -126,7 +129,7 @@ def evaluar_con_panel_cv(
     for k, vals in metricas.items():
         arr = np.array(vals) if vals else np.array([0.0])
         result[f"{k}_mean"] = float(arr.mean())
-        result[f"{k}_std"]  = float(arr.std())
+        result[f"{k}_std"] = float(arr.std())
     return result
 
 
@@ -163,20 +166,21 @@ def evaluar_en_grid_completo(
     # Extraer anio del inicio del periodo (primeros 4 caracteres)
     if anio_inicio is not None or anio_fin is not None:
         annos = df["anio_semana"].str[:4].astype(int)
-        mask  = pd.Series(True, index=df.index)
+        mask = pd.Series(True, index=df.index)
         if anio_inicio is not None:
-            mask &= (annos >= anio_inicio)
+            mask &= annos >= anio_inicio
         if anio_fin is not None:
-            mask &= (annos <= anio_fin)
+            mask &= annos <= anio_fin
         df = df[mask]
 
     # Mantener solo features disponibles en el grid completo
     cols_presentes = [c for c in feature_cols if c in df.columns]
-    cols_ausentes  = [c for c in feature_cols if c not in df.columns]
+    cols_ausentes = [c for c in feature_cols if c not in df.columns]
     if cols_ausentes:
         print(f"  [AVISO] Features no presentes en grid completo: {cols_ausentes}")
 
-    df = df.dropna(subset=cols_presentes + [target_col])
+    # Solo descartar filas sin target; las features NaN las maneja el SimpleImputer del pipeline
+    df = df.dropna(subset=[target_col])
     X_eval = df[cols_presentes]
     y_eval = df[target_col]
 
@@ -192,11 +196,11 @@ def evaluar_en_grid_completo(
     n_neg = int((y_eval == 0).sum())
 
     return {
-        "auc_roc_full":    float(auc),
-        "recall_full":     float(recall_score(y_eval, y_pred, zero_division=0)),
-        "precision_full":  float(precision_score(y_eval, y_pred, zero_division=0)),
-        "f1_full":         float(f1_score(y_eval, y_pred, zero_division=0)),
-        "n_total_full":    n_pos + n_neg,
+        "auc_roc_full": float(auc),
+        "recall_full": float(recall_score(y_eval, y_pred, zero_division=0)),
+        "precision_full": float(precision_score(y_eval, y_pred, zero_division=0)),
+        "f1_full": float(f1_score(y_eval, y_pred, zero_division=0)),
+        "n_total_full": n_pos + n_neg,
         "n_positivos_full": n_pos,
         "n_negativos_full": n_neg,
     }

@@ -29,6 +29,7 @@ from pydantic import BaseModel, model_validator
 # Modelos Pydantic — uno por sección del YAML
 # ---------------------------------------------------------------------------
 
+
 class GeoConfig(BaseModel):
     departamento: str
 
@@ -50,6 +51,7 @@ class PeriodoConfig(BaseModel):
             )
         return self
 
+
 class VentanasConfig(BaseModel):
     precipitacion_dias: int = 14
     prediccion_dias: int = 7
@@ -65,6 +67,7 @@ class EspacialConfig(BaseModel):
     granularidad: str = "cuenca"
     hydrobasins_nivel: int = 5
     pseudo_absence: PseudoAbsenceConfig = PseudoAbsenceConfig()
+
 
 class IdeamSourceConfig(BaseModel):
     dataset_id: str
@@ -94,7 +97,9 @@ class BboxConfig(BaseModel):
 class ChirpsSourceConfig(BaseModel):
     activo: bool = True
     descripcion: str = ""
-    base_url: str = "https://data.chc.ucsb.edu/products/CHIRPS-2.0/global_daily/tifs/p05"
+    base_url: str = (
+        "https://data.chc.ucsb.edu/products/CHIRPS-2.0/global_daily/tifs/p05"
+    )
     bbox: BboxConfig
 
 
@@ -139,6 +144,7 @@ class TargetConfig(BaseModel):
     a sklearn, que calcula los pesos proporcionalmente a la frecuencia
     inversa de cada clase en los datos de entrenamiento.
     """
+
     nombre: str = "deslizamiento"
     tipo: str = "binario"
     clase_positiva: int = 1
@@ -207,6 +213,7 @@ class ModelosConfig(BaseModel):
 # Modelo raíz
 # ---------------------------------------------------------------------------
 
+
 class ExperimentConfig(BaseModel):
     """Configuración completa del experimento, cargada desde YAML."""
 
@@ -243,7 +250,9 @@ class ExperimentConfig(BaseModel):
     @property
     def all_features(self) -> list[str]:
         """Lista completa de features activas según configuración de fuentes."""
-        feats = self.features.base + self.features.hidrobasins + self.features.seasonality
+        feats = (
+            self.features.base + self.features.hidrobasins + self.features.seasonality
+        )
         if self.fuentes.era5.activo:
             feats += self.features.era5
         if self.fuentes.siata.activo:
@@ -276,28 +285,29 @@ class ExperimentConfig(BaseModel):
         MLflow no acepta valores anidados ni listas — todo se convierte a str.
         """
         return {
-            "geo.departamento":            self.geo.departamento,
-            "periodo.anio_inicio":         str(self.periodo.anio_inicio),
-            "periodo.anio_fin":            str(self.periodo.anio_fin),
-            "fuentes.ideam.dataset_id":    self.fuentes.ideam.dataset_id,
-            "fuentes.ungrd.dataset_id":    self.fuentes.ungrd.dataset_id,
-            "fuentes.siata.activo":        str(self.fuentes.siata.activo),
-            "fuentes.chirps.activo":       str(self.fuentes.chirps.activo),
-            "fuentes.era5.activo":         str(self.fuentes.era5.activo),
-            "target.tipo":                 self.target.tipo,
-            "target.nombre":               self.target.nombre,
-            "target.class_weight":         self.target.class_weight,
-            "features.n_total":            str(len(self.all_features)),
-            "eventos.n_landslide_kw":      str(len(self.eventos.landslide_keywords)),
+            "geo.departamento": self.geo.departamento,
+            "periodo.anio_inicio": str(self.periodo.anio_inicio),
+            "periodo.anio_fin": str(self.periodo.anio_fin),
+            "fuentes.ideam.dataset_id": self.fuentes.ideam.dataset_id,
+            "fuentes.ungrd.dataset_id": self.fuentes.ungrd.dataset_id,
+            "fuentes.siata.activo": str(self.fuentes.siata.activo),
+            "fuentes.chirps.activo": str(self.fuentes.chirps.activo),
+            "fuentes.era5.activo": str(self.fuentes.era5.activo),
+            "target.tipo": self.target.tipo,
+            "target.nombre": self.target.nombre,
+            "target.class_weight": self.target.class_weight,
+            "features.n_total": str(len(self.all_features)),
+            "eventos.n_landslide_kw": str(len(self.eventos.landslide_keywords)),
             "ventanas.precipitacion_dias": str(self.ventanas.precipitacion_dias),
-            "ventanas.prediccion_dias":    str(self.ventanas.prediccion_dias),
-            "ventanas.granularidad":       self.ventanas.granularidad,
+            "ventanas.prediccion_dias": str(self.ventanas.prediccion_dias),
+            "ventanas.granularidad": self.ventanas.granularidad,
         }
 
 
 # ---------------------------------------------------------------------------
 # Función de carga pública
 # ---------------------------------------------------------------------------
+
 
 def _find_project_root(start: Path) -> Path:
     """Sube desde `start` hasta encontrar pyproject.toml."""

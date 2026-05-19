@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Configurar Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Instalar dependencias
+        run: uv sync --group dev
+
+      - name: Verificar formato (ruff format)
+        run: uv run ruff format --check .
+
+      - name: Verificar linting (ruff check)
+        run: uv run ruff check .
+
+      - name: Ejecutar tests unitarios
+        run: uv run pytest tests/unit/ -q --tb=short

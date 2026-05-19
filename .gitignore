@@ -13,6 +13,13 @@ __pycache__/
 .claude/
 data/processed/*.parquet
 data/processed/*.csv
+data/processed/*.png
 mlruns/
 notebooks/mlruns/
+notebooks/.ipynb_checkpoints/
 scripts/*.log
+.vscode/
+logs/
+data/raw/*.csv
+data/raw/*.nc
+data/raw/*.tif

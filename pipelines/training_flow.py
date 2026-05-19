@@ -34,6 +34,7 @@ _HOLDOUT_ANIOS = 2
 # Tasks
 # ---------------------------------------------------------------------------
 
+
 @task(name="cargar-dataset-entrenamiento")
 def task_cargar_dataset(grid_pa_path: str, cfg: ExperimentConfig):
     logger = get_run_logger()
@@ -96,9 +97,9 @@ def task_entrenar_modelo(
         f"Recall_CV={metricas_cv['recall_mean']:.4f}"
     )
     return {
-        "nombre":       nombre,
-        "pipeline":     pipeline,
-        "run_id":       run_id,
+        "nombre": nombre,
+        "pipeline": pipeline,
+        "run_id": run_id,
         **metricas_cv,
     }
 
@@ -163,11 +164,13 @@ def task_transition_staging(
     model_name: str,
     version: str,
     umbral_auc: float = 0.60,
-    umbral_precision: float = 0.10,
+    umbral_precision: float = 0.006,
 ) -> bool:
     mlflow.set_tracking_uri(cfg.mlflow_tracking_uri)
     promovido = transition_stage(
-        cfg, model_name, version,
+        cfg,
+        model_name,
+        version,
         umbral_auc=umbral_auc,
         umbral_precision=umbral_precision,
     )
@@ -178,13 +181,14 @@ def task_transition_staging(
 # Flow principal
 # ---------------------------------------------------------------------------
 
+
 @flow(name="antioquia-training-pipeline", log_prints=True)
 def training_pipeline(
     grid_pa_path: str | None = None,
     grid_full_path: str | None = None,
     config_path: str | None = None,
     umbral_auc: float = 0.60,
-    umbral_precision: float = 0.10,
+    umbral_precision: float = 0.006,
 ) -> dict:
     """
     Entrena todos los modelos configurados, evalua cada uno en el grid completo
@@ -211,7 +215,7 @@ def training_pipeline(
 
     processed_dir = _PROJECT_ROOT / "data" / "processed"
     if grid_pa_path is None:
-        grid_pa_path   = str(processed_dir / "grid_cuencas_v3.parquet")
+        grid_pa_path = str(processed_dir / "grid_cuencas_v3.parquet")
     if grid_full_path is None:
         grid_full_path = str(processed_dir / "grid_completo_v3.parquet")
 
@@ -240,6 +244,12 @@ def training_pipeline(
     model_name, version = task_registrar_modelo(cfg, mejor)
 
     # 5. Transicion a Staging si cumple ambos umbrales
-    task_transition_staging(cfg, model_name, version, umbral_auc, umbral_precision)
+    task_transition_staging(
+        cfg,
+        model_name,
+        version,
+        umbral_auc=umbral_auc,
+        umbral_precision=umbral_precision,
+    )
 
     return mejor

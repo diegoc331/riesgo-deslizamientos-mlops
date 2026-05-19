@@ -45,14 +45,18 @@ def clean_ideam(df: pd.DataFrame) -> pd.DataFrame:
 
     date_col = next((c for c in df.columns if "fecha" in c.lower()), None)
     if date_col is None:
-        raise ValueError(f"No se encontró columna de fecha. Columnas: {list(df.columns)}")
+        raise ValueError(
+            f"No se encontró columna de fecha. Columnas: {list(df.columns)}"
+        )
 
     df["fecha"] = pd.to_datetime(df[date_col], errors="coerce")
     df = df.dropna(subset=["fecha"])
 
     val_col = next((c for c in df.columns if "valor" in c.lower()), None)
     if val_col is None:
-        raise ValueError(f"No se encontró columna de valor. Columnas: {list(df.columns)}")
+        raise ValueError(
+            f"No se encontró columna de valor. Columnas: {list(df.columns)}"
+        )
 
     df["precip_mm"] = pd.to_numeric(df[val_col], errors="coerce")
     df = df.dropna(subset=["precip_mm"])
@@ -65,7 +69,9 @@ def clean_ideam(df: pd.DataFrame) -> pd.DataFrame:
     df["mes"] = df["fecha"].dt.month
     df["anio_mes"] = df["fecha"].dt.to_period("M")
 
-    print(f"IDEAM limpio: {len(df):,} registros | {df['fecha'].min().date()} → {df['fecha'].max().date()}")
+    print(
+        f"IDEAM limpio: {len(df):,} registros | {df['fecha'].min().date()} → {df['fecha'].max().date()}"
+    )
     return df[["fecha", "anio", "mes", "anio_mes", "departamento", "precip_mm"]]
 
 
@@ -89,15 +95,19 @@ def clean_ungrd(df: pd.DataFrame) -> pd.DataFrame:
         )
         df_filtrado = df[mask].copy()
         total_eventos = df[evento_col].nunique()
-        print(f"UNGRD: {len(df):,} total → {len(df_filtrado):,} eventos hidrometeorológicos "
-              f"(de {total_eventos} tipos de evento)")
+        print(
+            f"UNGRD: {len(df):,} total → {len(df_filtrado):,} eventos hidrometeorológicos "
+            f"(de {total_eventos} tipos de evento)"
+        )
         df = df_filtrado
     else:
         print("UNGRD: no se encontró columna 'evento' — usando todos los registros")
 
     date_col = next((c for c in df.columns if "fecha" in c.lower()), None)
     if date_col is None:
-        raise ValueError(f"No se encontró columna de fecha. Columnas: {list(df.columns)}")
+        raise ValueError(
+            f"No se encontró columna de fecha. Columnas: {list(df.columns)}"
+        )
 
     df["fecha"] = pd.to_datetime(df[date_col], errors="coerce")
     df = df.dropna(subset=["fecha"])
@@ -113,8 +123,11 @@ def clean_ungrd(df: pd.DataFrame) -> pd.DataFrame:
     df["mes"] = df["fecha"].dt.month
     df["anio_mes"] = df["fecha"].dt.to_period("M")
 
-    print(f"UNGRD limpio: {len(df):,} eventos | {df['fecha'].min().date()} → {df['fecha'].max().date()}")
+    print(
+        f"UNGRD limpio: {len(df):,} eventos | {df['fecha'].min().date()} → {df['fecha'].max().date()}"
+    )
     return df[["fecha", "anio", "mes", "anio_mes", "departamento", evento_col_out]]
+
 
 def aggregate_weekly_ideam(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -132,19 +145,16 @@ def aggregate_weekly_ideam(df: pd.DataFrame) -> pd.DataFrame:
     diario = (
         df.groupby("fecha_dia")
         .agg(
-            precip_diaria  = ("precip_mm", "sum"),
-            n_estaciones   = ("precip_mm", "count"),
+            precip_diaria=("precip_mm", "sum"),
+            n_estaciones=("precip_mm", "count"),
         )
         .reset_index()
     )
     diario["fecha_dia"] = pd.to_datetime(diario["fecha_dia"])
 
-
     # Paso 2: crear índice diario completo (detecta días sin datos)
     idx_completo = pd.date_range(
-        diario["fecha_dia"].min(),
-        diario["fecha_dia"].max(),
-        freq="D"
+        diario["fecha_dia"].min(), diario["fecha_dia"].max(), freq="D"
     )
     diario = (
         diario.set_index("fecha_dia")
@@ -154,23 +164,23 @@ def aggregate_weekly_ideam(df: pd.DataFrame) -> pd.DataFrame:
     )
     # Imputar días sin datos con 0 (ausencia de reporte ≠ ausencia de lluvia,
     # pero es la única opción conservadora sin datos SIATA)
-    diario["precip_diaria"]  = diario["precip_diaria"].fillna(0)
-    diario["n_estaciones"]   = diario["n_estaciones"].fillna(0)
+    diario["precip_diaria"] = diario["precip_diaria"].fillna(0)
+    diario["n_estaciones"] = diario["n_estaciones"].fillna(0)
 
     # Paso 3: construir ventanas deslizantes por semana ISO
     # Cada semana toma los 14 días anteriores como ventana de precipitación
     diario = diario.sort_values("fecha_dia").reset_index(drop=True)
-    diario["semana_iso"]     = diario["fecha_dia"].dt.isocalendar().week.astype(int)
-    diario["anio_iso"]       = diario["fecha_dia"].dt.isocalendar().year.astype(int)
-    diario["anio_semana"]    = (
-        diario["fecha_dia"].dt.to_period("W")
-    )
+    diario["semana_iso"] = diario["fecha_dia"].dt.isocalendar().week.astype(int)
+    diario["anio_iso"] = diario["fecha_dia"].dt.isocalendar().year.astype(int)
+    diario["anio_semana"] = diario["fecha_dia"].dt.to_period("W")
 
     # Rolling sobre el índice diario — shift(1) para no incluir la semana actual
-    diario["precip_acum_14d"]        = diario["precip_diaria"].rolling(14, min_periods=7).sum()
-    diario["precip_acum_7d"]         = diario["precip_diaria"].rolling(7,  min_periods=4).sum()
-    diario["precip_acum_3d"]         = diario["precip_diaria"].rolling(3,  min_periods=2).sum()
-    diario["precip_max_diario_14d"]  = diario["precip_diaria"].rolling(14, min_periods=7).max()
+    diario["precip_acum_14d"] = diario["precip_diaria"].rolling(14, min_periods=7).sum()
+    diario["precip_acum_7d"] = diario["precip_diaria"].rolling(7, min_periods=4).sum()
+    diario["precip_acum_3d"] = diario["precip_diaria"].rolling(3, min_periods=2).sum()
+    diario["precip_max_diario_14d"] = (
+        diario["precip_diaria"].rolling(14, min_periods=7).max()
+    )
     diario["precip_dias_lluvia_14d"] = (
         (diario["precip_diaria"] > 0).rolling(14, min_periods=7).sum()
     )
@@ -180,24 +190,29 @@ def aggregate_weekly_ideam(df: pd.DataFrame) -> pd.DataFrame:
     semanal = (
         diario.groupby("anio_semana", observed=True)
         .agg(
-            precip_acum_14d        = ("precip_acum_14d",        "last"),
-            precip_acum_7d         = ("precip_acum_7d",         "last"),
-            precip_acum_3d         = ("precip_acum_3d",         "last"),
-            precip_max_diario_14d  = ("precip_max_diario_14d",  "last"),
-            precip_dias_lluvia_14d = ("precip_dias_lluvia_14d", "last"),
-            n_estaciones           = ("n_estaciones",           "mean"),
-            fecha_fin_semana       = ("fecha_dia",              "last"),
+            precip_acum_14d=("precip_acum_14d", "last"),
+            precip_acum_7d=("precip_acum_7d", "last"),
+            precip_acum_3d=("precip_acum_3d", "last"),
+            precip_max_diario_14d=("precip_max_diario_14d", "last"),
+            precip_dias_lluvia_14d=("precip_dias_lluvia_14d", "last"),
+            n_estaciones=("n_estaciones", "mean"),
+            fecha_fin_semana=("fecha_dia", "last"),
         )
         .reset_index()
     )
-    semanal["mes"]        = semanal["fecha_fin_semana"].dt.month
-    semanal["semana_sin"] = np.sin(2 * np.pi * semanal["fecha_fin_semana"].dt.isocalendar().week / 52)
-    semanal["semana_cos"] = np.cos(2 * np.pi * semanal["fecha_fin_semana"].dt.isocalendar().week / 52)
-    semanal["mes_sin"]    = np.sin(2 * np.pi * semanal["mes"] / 12)
-    semanal["mes_cos"]    = np.cos(2 * np.pi * semanal["mes"] / 12)
+    semanal["mes"] = semanal["fecha_fin_semana"].dt.month
+    semanal["semana_sin"] = np.sin(
+        2 * np.pi * semanal["fecha_fin_semana"].dt.isocalendar().week / 52
+    )
+    semanal["semana_cos"] = np.cos(
+        2 * np.pi * semanal["fecha_fin_semana"].dt.isocalendar().week / 52
+    )
+    semanal["mes_sin"] = np.sin(2 * np.pi * semanal["mes"] / 12)
+    semanal["mes_cos"] = np.cos(2 * np.pi * semanal["mes"] / 12)
 
     print(f"IDEAM semanal: {len(semanal):,} semanas")
     return semanal
+
 
 def aggregate_weekly_ungrd(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -214,6 +229,7 @@ def aggregate_weekly_ungrd(df: pd.DataFrame) -> pd.DataFrame:
     )
     return semanal
 
+
 def save_processed(df: pd.DataFrame, name: str = "dataset_correlacion.csv") -> None:
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
     path = PROCESSED_DIR / name
@@ -224,6 +240,7 @@ def save_processed(df: pd.DataFrame, name: str = "dataset_correlacion.csv") -> N
 # =============================================================================
 # CHIRPS v2.0 — agregación semanal (reemplaza aggregate_weekly_ideam)
 # =============================================================================
+
 
 def aggregate_weekly_chirps(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -247,12 +264,7 @@ def aggregate_weekly_chirps(df: pd.DataFrame) -> pd.DataFrame:
 
     # Índice diario completo — rellena huecos de descarga con 0
     idx_completo = pd.date_range(df["fecha"].min(), df["fecha"].max(), freq="D")
-    df = (
-        df.set_index("fecha")
-        .reindex(idx_completo)
-        .rename_axis("fecha")
-        .reset_index()
-    )
+    df = df.set_index("fecha").reindex(idx_completo).rename_axis("fecha").reset_index()
     n_huecos = df["precip_mm"].isna().sum()
     if n_huecos > 0:
         print(f"  CHIRPS: {n_huecos} días sin datos → imputados con 0")
@@ -260,22 +272,24 @@ def aggregate_weekly_chirps(df: pd.DataFrame) -> pd.DataFrame:
 
     # Rolling windows sobre serie diaria continua
     df["anio_semana"] = df["fecha"].dt.to_period("W")
-    df["precip_acum_14d"]        = df["precip_mm"].rolling(14, min_periods=7).sum()
-    df["precip_acum_7d"]         = df["precip_mm"].rolling(7,  min_periods=4).sum()
-    df["precip_acum_3d"]         = df["precip_mm"].rolling(3,  min_periods=2).sum()
-    df["precip_max_diario_14d"]  = df["precip_mm"].rolling(14, min_periods=7).max()
-    df["precip_dias_lluvia_14d"] = (df["precip_mm"] > 0).rolling(14, min_periods=7).sum()
+    df["precip_acum_14d"] = df["precip_mm"].rolling(14, min_periods=7).sum()
+    df["precip_acum_7d"] = df["precip_mm"].rolling(7, min_periods=4).sum()
+    df["precip_acum_3d"] = df["precip_mm"].rolling(3, min_periods=2).sum()
+    df["precip_max_diario_14d"] = df["precip_mm"].rolling(14, min_periods=7).max()
+    df["precip_dias_lluvia_14d"] = (
+        (df["precip_mm"] > 0).rolling(14, min_periods=7).sum()
+    )
 
     # Colapsar a nivel semanal (último día = acumulado final de la ventana)
     semanal = (
         df.groupby("anio_semana", observed=True)
         .agg(
-            precip_acum_14d        = ("precip_acum_14d",        "last"),
-            precip_acum_7d         = ("precip_acum_7d",         "last"),
-            precip_acum_3d         = ("precip_acum_3d",         "last"),
-            precip_max_diario_14d  = ("precip_max_diario_14d",  "last"),
-            precip_dias_lluvia_14d = ("precip_dias_lluvia_14d", "last"),
-            fecha_fin_semana       = ("fecha",                  "last"),
+            precip_acum_14d=("precip_acum_14d", "last"),
+            precip_acum_7d=("precip_acum_7d", "last"),
+            precip_acum_3d=("precip_acum_3d", "last"),
+            precip_max_diario_14d=("precip_max_diario_14d", "last"),
+            precip_dias_lluvia_14d=("precip_dias_lluvia_14d", "last"),
+            fecha_fin_semana=("fecha", "last"),
         )
         .reset_index()
     )
@@ -286,16 +300,23 @@ def aggregate_weekly_chirps(df: pd.DataFrame) -> pd.DataFrame:
     # Las features de estacionalidad NO se shiftean: la posicion en el
     # calendario es conocida de antemano.
     _FEAT_COLS = [
-        "precip_acum_14d", "precip_acum_7d", "precip_acum_3d",
-        "precip_max_diario_14d", "precip_dias_lluvia_14d",
+        "precip_acum_14d",
+        "precip_acum_7d",
+        "precip_acum_3d",
+        "precip_max_diario_14d",
+        "precip_dias_lluvia_14d",
     ]
     semanal[_FEAT_COLS] = semanal[_FEAT_COLS].shift(1)
 
-    semanal["mes"]        = semanal["fecha_fin_semana"].dt.month
-    semanal["semana_sin"] = np.sin(2 * np.pi * semanal["fecha_fin_semana"].dt.isocalendar().week / 52)
-    semanal["semana_cos"] = np.cos(2 * np.pi * semanal["fecha_fin_semana"].dt.isocalendar().week / 52)
-    semanal["mes_sin"]    = np.sin(2 * np.pi * semanal["mes"] / 12)
-    semanal["mes_cos"]    = np.cos(2 * np.pi * semanal["mes"] / 12)
+    semanal["mes"] = semanal["fecha_fin_semana"].dt.month
+    semanal["semana_sin"] = np.sin(
+        2 * np.pi * semanal["fecha_fin_semana"].dt.isocalendar().week / 52
+    )
+    semanal["semana_cos"] = np.cos(
+        2 * np.pi * semanal["fecha_fin_semana"].dt.isocalendar().week / 52
+    )
+    semanal["mes_sin"] = np.sin(2 * np.pi * semanal["mes"] / 12)
+    semanal["mes_cos"] = np.cos(2 * np.pi * semanal["mes"] / 12)
 
     print(
         f"CHIRPS semanal: {len(semanal)} semanas | "
@@ -308,6 +329,7 @@ def aggregate_weekly_chirps(df: pd.DataFrame) -> pd.DataFrame:
 # =============================================================================
 # ERA5-Land — agregación semanal de humedad de suelo
 # =============================================================================
+
 
 def aggregate_weekly_era5(df: pd.DataFrame, ventana_dias: int = 14) -> pd.DataFrame:
     """
@@ -329,12 +351,7 @@ def aggregate_weekly_era5(df: pd.DataFrame, ventana_dias: int = 14) -> pd.DataFr
 
     # Índice diario completo con interpolación lineal para días faltantes
     idx_completo = pd.date_range(df["fecha"].min(), df["fecha"].max(), freq="D")
-    df = (
-        df.set_index("fecha")
-        .reindex(idx_completo)
-        .rename_axis("fecha")
-        .reset_index()
-    )
+    df = df.set_index("fecha").reindex(idx_completo).rename_axis("fecha").reset_index()
     n_gaps = df["soil_moisture_m3m3"].isna().sum()
     if n_gaps > 0:
         df["soil_moisture_m3m3"] = df["soil_moisture_m3m3"].interpolate(method="linear")
@@ -351,8 +368,8 @@ def aggregate_weekly_era5(df: pd.DataFrame, ventana_dias: int = 14) -> pd.DataFr
     semanal = (
         df.groupby("anio_semana", observed=True)
         .agg(
-            soil_moisture_14d = (f"soil_moisture_{ventana_dias}d", "last"),
-            fecha_fin_semana  = ("fecha",                         "last"),
+            soil_moisture_14d=(f"soil_moisture_{ventana_dias}d", "last"),
+            fecha_fin_semana=("fecha", "last"),
         )
         .reset_index()
     )
@@ -427,6 +444,7 @@ def build_weekly_dataset_v2(
 # Fase 2 — Dataset (semana × cuenca) con PU-Learning
 # =============================================================================
 
+
 def build_cuenca_dataset_v3(
     df_chirps_semanal: pd.DataFrame,
     df_era5_semanal: pd.DataFrame,
@@ -487,10 +505,7 @@ def build_cuenca_dataset_v3(
     #    shift(-1) dentro de cada HYBAS_ID respeta el orden temporal
     # ------------------------------------------------------------------
     df = df.sort_values(["HYBAS_ID", "anio_semana"]).reset_index(drop=True)
-    df["deslizamiento_s1"] = (
-        df.groupby("HYBAS_ID")["deslizamiento"]
-        .shift(-1)
-    )
+    df["deslizamiento_s1"] = df.groupby("HYBAS_ID")["deslizamiento"].shift(-1)
 
     # ------------------------------------------------------------------
     # 5. Filtrar al período y eliminar última semana (sin target)
@@ -498,16 +513,14 @@ def build_cuenca_dataset_v3(
     anio_ini, anio_fin = periodo
     semana_ini = pd.Period(f"{anio_ini}-01-01", "W")
     semana_fin = pd.Period(f"{anio_fin}-12-31", "W")
-    df = df[
-        (df["anio_semana"] >= semana_ini) &
-        (df["anio_semana"] <= semana_fin)
-    ]
+    df = df[(df["anio_semana"] >= semana_ini) & (df["anio_semana"] <= semana_fin)]
     df = df.dropna(subset=["deslizamiento_s1", "precip_acum_14d"])
     df["deslizamiento_s1"] = df["deslizamiento_s1"].astype(int)
 
     # Renombrar target para uniformidad con v1/v2
+    # Eliminar la columna original antes de renombrar — evita duplicado de nombre
+    df = df.drop(columns=["deslizamiento", "n_eventos"], errors="ignore")
     df = df.rename(columns={"deslizamiento_s1": "deslizamiento"})
-    df = df.drop(columns=["n_eventos"], errors="ignore")
 
     df = df.reset_index(drop=True)
     n_pos = df["deslizamiento"].sum()

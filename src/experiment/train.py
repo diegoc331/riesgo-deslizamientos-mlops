@@ -17,6 +17,7 @@ from sklearn.preprocessing import StandardScaler
 
 try:
     from pulearn import BaggingPuClassifier
+
     _PULEARN_AVAILABLE = True
 except ImportError:
     _PULEARN_AVAILABLE = False
@@ -27,11 +28,13 @@ def make_pipeline(classifier) -> Pipeline:
     Pipeline con imputación + escalado + clasificador.
     Imputación y escalado se ajustan solo con datos de train (sin leakage).
     """
-    return Pipeline([
-        ("imputer", SimpleImputer(strategy="median")),
-        ("scaler",  StandardScaler()),
-        ("clf",     classifier),
-    ])
+    return Pipeline(
+        [
+            ("imputer", SimpleImputer(strategy="median")),
+            ("scaler", StandardScaler()),
+            ("clf", classifier),
+        ]
+    )
 
 
 def get_experimentos(cfg, n_positivos: int) -> dict:
@@ -90,6 +93,7 @@ def get_experimentos(cfg, n_positivos: int) -> dict:
         )
     else:
         import warnings
+
         warnings.warn(
             "pulearn no está instalado — bagging_pu omitido. "
             "Instala con: uv add pulearn",

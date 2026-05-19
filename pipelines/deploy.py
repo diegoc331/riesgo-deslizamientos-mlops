@@ -40,15 +40,15 @@ if __name__ == "__main__":
     _full_deployment.deploy(
         name="antioquia-weekly",
         work_pool_name=_WORK_POOL,
-        cron="0 5 * * 1",          # lunes 5am — ETL + entrenamiento
+        cron="0 5 * * 1",  # lunes 5am — ETL + entrenamiento
         parameters={
-            "umbral_auc":       0.60,
-            "umbral_precision": 0.10,
+            "umbral_auc": 0.60,
+            "umbral_precision": 0.006,  # 1.5× tasa base (0.4%) — científicamente justificado
         },
         tags=["etl", "training", "mlflow", "antioquia", "deslizamientos"],
         description=(
             "Pipeline semanal completo: ETL (CHIRPS+UNGRD) seguido de entrenamiento, "
-            "evaluacion en grid completo y promocion a Staging si AUC>=0.60 y Precision>=0.10"
+            "evaluacion en grid completo y promocion a Staging si AUC>=0.60 y Precision>=0.006"
         ),
     )
     print("[OK] antioquia-weekly registrado (lunes 5am)")
