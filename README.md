@@ -2,6 +2,11 @@
 
 ![CI](https://github.com/diegoc331/riesgo-deslizamientos-mlops/actions/workflows/ci.yml/badge.svg)
 
+**Estudiantes:** Diego Fernando Nuñez · Mateo Atehortua · Diego Fernando Castañeda  
+**Curso:** MLOps — Universidad de Medellín
+
+---
+
 Sistema MLOps de predicción temprana de deslizamientos a granularidad de **cuenca hidrográfica** (HydroSHEDS nivel 10). Entrega alertas 7 días antes del evento a Unidades de Gestión de Riesgos (UNGRD/DAGRD).
 
 **BCR = 2.11×** con factor de reducción de daños 40% (escenario conservador). Costo histórico evitable: $210 mil millones COP (2019-2022).
