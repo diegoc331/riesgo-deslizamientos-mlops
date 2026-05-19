@@ -20,6 +20,7 @@ notebooks/.ipynb_checkpoints/
 scripts/*.log
 .vscode/
 logs/
+output/
 data/raw/*.csv
 data/raw/*.nc
 data/raw/*.tif

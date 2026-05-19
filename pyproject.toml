@@ -32,6 +32,9 @@ dependencies = [
     "prefect>=3.7.1",
     "fastapi>=0.111.0",
     "uvicorn[standard]>=0.29.0",
+    "moviepy>=2.2.1",
+    "pillow>=11.3.0",
+    "imageio-ffmpeg>=0.6.0",
 ]
 
 [dependency-groups]
