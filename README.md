@@ -3,7 +3,7 @@
 ![CI](https://github.com/diegoc331/riesgo-deslizamientos-mlops/actions/workflows/ci.yml/badge.svg)
 
 **Estudiantes:** Diego Fernando Nuñez · Mateo Atehortua · Diego Fernando Castañeda  
-**Curso:** MLOps — Universidad de Medellín
+**Curso:** Proyecto II — Universidad de Medellín
 
 ---
 
