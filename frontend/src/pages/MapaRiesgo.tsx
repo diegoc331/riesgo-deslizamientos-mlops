@@ -169,32 +169,11 @@ export default function MapaRiesgo() {
           </label>
         </div>
 
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
-          {semanasData && (
-            <select
-              value={semanaSeleccionada ?? ''}
-              onChange={e => setSemanaSeleccionada(e.target.value || null)}
-              style={{
-                fontSize: 12, padding: '4px 8px',
-                border: '1px solid var(--color-border)', borderRadius: 6,
-                background: 'var(--color-bg)', color: 'var(--color-text)',
-                maxWidth: 260,
-              }}
-            >
-              <option value="">Semana actual (pipeline ML)</option>
-              {[...semanasData.semanas].reverse().map(s => (
-                <option key={s} value={s}>{formatSemana(s)}</option>
-              ))}
-            </select>
-          )}
-          {loadingHistorica && (
-            <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Calculando...</span>
-          )}
-          {!semanaSeleccionada && (
-            <span style={{ fontSize: 12, color: predictions.length > 0 ? 'var(--color-bajo)' : 'var(--color-text-muted)' }}>
-              {predictions.length > 0 ? '● ' : ''}{modoLabel}
-            </span>
-          )}
+        <div style={{ marginLeft: 'auto' }}>
+          <span style={{ fontSize: 12, color: predictions.length > 0 ? 'var(--color-bajo)' : 'var(--color-text-muted)' }}>
+            {predictions.length > 0 ? '● ' : ''}
+            {loadingHistorica ? 'Calculando predicciones...' : modoLabel}
+          </span>
         </div>
       </div>
 
@@ -309,6 +288,27 @@ export default function MapaRiesgo() {
               <div>Afectados: <b>56.353</b></div>
               <div>BCR: <b>2.11×</b></div>
             </div>
+          </div>
+
+          <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 14 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)', marginBottom: 6 }}>SEMANA DE ANÁLISIS</div>
+            <select
+              value={semanaSeleccionada ?? ''}
+              onChange={e => setSemanaSeleccionada(e.target.value || null)}
+              style={{
+                width: '100%', fontSize: 12, padding: '5px 6px',
+                border: '1px solid var(--color-border)', borderRadius: 6,
+                background: 'var(--color-bg)', color: 'var(--color-text)',
+              }}
+            >
+              <option value="">{semanasData ? 'Semana actual (ML)' : 'Cargando semanas...'}</option>
+              {semanasData && [...semanasData.semanas].reverse().map(s => (
+                <option key={s} value={s}>{formatSemana(s)}</option>
+              ))}
+            </select>
+            {loadingHistorica && (
+              <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>Calculando predicciones...</div>
+            )}
           </div>
 
           <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
