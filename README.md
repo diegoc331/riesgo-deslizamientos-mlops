@@ -7,7 +7,7 @@
 
 ---
 
-Sistema MLOps de predicción temprana de deslizamientos a granularidad de **cuenca hidrográfica** (HydroSHEDS nivel 10). Entrega alertas 7 días antes del evento a Unidades de Gestión de Riesgos (UNGRD/DAGRD).
+Sistema MLOps de predicción temprana de deslizamientos a granularidad de **cuenca hidrográfica** (HydroSHEDS nivel 10). Entrega alertas 7 días antes del evento a Unidades de Gestión de Riesgos (UNGRD/DAGRD), con un dashboard operacional para visualización y análisis.
 
 **BCR = 2.11×** con factor de reducción de daños 40% (escenario conservador). Costo histórico evitable: $210 mil millones COP (2019-2022).
 
@@ -18,6 +18,7 @@ Sistema MLOps de predicción temprana de deslizamientos a granularidad de **cuen
 | Requisito | Versión mínima |
 |---|---|
 | Python | 3.11 |
+| Node.js | 18+ |
 | uv | 0.4+ |
 | Docker + docker-compose | 24+ |
 | Modelo entrenado | `mlruns/` con versión en Staging (`uv run python pipelines/training_flow.py`) |
@@ -39,22 +40,33 @@ CHIRPS v2.0          UNGRD Socrata       HydroSHEDS
                     grid_cuencas_v3.parquet   (7.630 instancias)
                     grid_completo_v3.parquet  (114.741 instancias)
                            │
-                    Prefect Training
+                    Prefect Training (lunes 6am)
                     training_flow.py
                            │
                     MLflow Registry
-                    BaggingPuClassifier
+                    BaggingPuClassifier / Staging
                     AUC-ROC real: 0.6088
                            │
+                    Prefect Prediction (lunes 6:30am)
+                    prediction_flow.py
+                           │
+                    predicciones_semana_actual.json
+                    (549 cuencas con probabilidad ML)
+                           │
                     FastAPI (puerto 8000)
-                    POST /predict
-                    POST /predict/batch
+                    POST /predict · /predict/batch
+                    GET  /predicciones/semana-actual
+                    GET  /geojson/cuencas · /impacto
                            │
                     Docker Compose
                     api + mlflow
                            │
                     Monitoring
                     KS test drift / JSONL logs
+                           │
+                    Dashboard UNGRD (puerto 3000)
+                    React + Leaflet + Recharts
+                    Mapa · Predicción · Impacto · Monitoring · Modelo
 ```
 
 ---
@@ -67,12 +79,13 @@ CHIRPS v2.0          UNGRD Socrata       HydroSHEDS
 | Espacio | GeoPandas + HydroSHEDS nivel 10 (549 cuencas Antioquia) |
 | ML | scikit-learn + pulearn (BaggingPuClassifier) |
 | Tracking | MLflow + SQLite |
-| Orquestación | Prefect 3.x (scheduling lunes 5am) |
+| Orquestación | Prefect 3.x (ETL lunes 5am · training 6am · inferencia 6:30am) |
 | Serving | FastAPI + Uvicorn |
 | Containerización | Docker + docker-compose |
 | Monitoreo | KS test drift, JSONL predictions log |
 | Config | Pydantic v2 + YAML versionado en Git |
 | CI/CD | GitHub Actions (ruff + pytest) |
+| Frontend | React 18 + TypeScript + Vite + Leaflet + Recharts |
 
 ---
 
@@ -82,18 +95,47 @@ CHIRPS v2.0          UNGRD Socrata       HydroSHEDS
 configs/
     antioquia_deslizamientos.yaml   # single source of truth
 data/
-    raw/                            # CHIRPS CSV, UNGRD CSV, spatial/*.gpkg
+    raw/
+        chirps_antioquia_daily.csv  # 1461 días 2019-2022
+        ungrd_emergencias.csv       # 25k eventos
+        spatial/
+            hydrobasins_antioquia_lev10.gpkg   # 549 cuencas (fuente)
+            cuencas_antioquia.geojson          # 549 cuencas (Leaflet)
     processed/
         grid_cuencas_v3.parquet     # 7.630 instancias (entrenamiento)
-        grid_completo_v3.parquet    # 114.741 instancias (evaluación honesta)
+        grid_completo_v3.parquet    # 114.741 instancias (evaluación + inferencia)
         best_params.json            # hiperparámetros óptimos
+        impacto_economico_por_cuenca.csv   # análisis BCR por cuenca
+        predicciones_semana_actual.json    # output del prediction_flow
+frontend/
+    public/
+        cuencas_antioquia.geojson   # GeoJSON estático (Leaflet)
+        impacto.json                # impacto económico estático (fallback)
+        predicciones_semana_actual.json    # predicciones ML estáticas (fallback)
+    src/
+        api/                        # hooks React Query (client, health, metadata, predict)
+        components/
+            layout/                 # Navbar
+            map/                    # RiskMap (Leaflet coroplético)
+            charts/                 # RiskGauge (Recharts)
+            ui/                     # RiskBadge, KpiCard
+        pages/
+            MapaRiesgo.tsx          # mapa principal (homepage)
+            Prediccion.tsx          # predicción individual
+            ImpactoEconomico.tsx    # análisis económico + BCR slider
+            Monitoring.tsx          # drift + log de predicciones
+            Modelo.tsx              # metadatos del modelo
+        types/index.ts              # tipos TS espejando schemas Pydantic
 notebooks/                          # EDA, tracking, tuning, impacto económico
 pipelines/
     data_flow.py                    # ETL Prefect
     training_flow.py                # Entrenamiento + evaluación + registry
-    deploy.py                       # Scheduling semanal
+    prediction_flow.py              # Inferencia semanal → JSON 549 cuencas
+    deploy.py                       # Scheduling training (lunes 6am)
+    deploy_prediction.py            # Scheduling predicción (lunes 6:30am)
 scripts/
     build_grid_v3.py                # Standalone: regenera grids
+    convert_gpkg_to_geojson.py      # GeoPackage → GeoJSON para Leaflet
     diagnostico_auc.py              # Valida AUC real vs pseudo-ausencias
 src/experiment/
     config.py                       # ExperimentConfig (Pydantic v2)
@@ -104,8 +146,8 @@ src/experiment/
     evaluate.py                     # panel_time_splits(), evaluación honesta
     registry.py                     # MLflow Model Registry
     api/
-        main.py                     # FastAPI app (lifespan)
-        routes.py                   # GET /health, /metadata · POST /predict, /predict/batch
+        main.py                     # FastAPI app (lifespan + CORS)
+        routes.py                   # 10 endpoints REST
         schemas.py                  # Pydantic: PredictRequest, PredictResponse
         dependencies.py             # Carga modelo desde MLflow Registry
     monitoring/
@@ -123,61 +165,58 @@ docker-compose.yml                  # api (8000) + mlflow (5001)
 
 ---
 
-## Inicio rápido con Docker
+## Inicio rápido
+
+### Con Docker (backend + MLflow)
 
 ```bash
-# 1. Clonar y entrar al directorio
+# 1. Clonar
 git clone <repo> && cd riesgo-deslizamientos-mlops
 
-# 2. Levantar servicios (requiere modelo entrenado en mlruns/)
+# 2. Levantar servicios
 docker compose up -d
 
 # 3. Verificar salud
 curl http://localhost:8000/health
 
-# 4. Predecir una cuenca
-curl -X POST http://localhost:8000/predict \
-  -H "Content-Type: application/json" \
-  -d '{
-    "hybas_id": 4080792720,
-    "precip_acum_14d": 82.4,
-    "precip_acum_7d": 45.1,
-    "precip_acum_3d": 18.2,
-    "precip_max_diario_14d": 22.7,
-    "precip_dias_lluvia_14d": 9.0,
-    "SUB_AREA": 245.8,
-    "UP_AREA": 1823.4,
-    "DIST_MAIN": 18.6,
-    "ORDER": 4,
-    "soil_moisture_14d": 0.31,
-    "semana_sin": 0.83,
-    "semana_cos": 0.56,
-    "mes_sin": 0.87,
-    "mes_cos": 0.50
-  }'
-
-# 5. MLflow UI
+# 4. MLflow UI
 open http://localhost:5001
 
-# 6. Documentación interactiva API
+# 5. Documentación interactiva API
 open http://localhost:8000/docs
 ```
 
----
+### Dashboard frontend
 
-## Correr el pipeline completo (sin Docker)
+```bash
+# Generar GeoJSON y predicciones (solo la primera vez)
+uv run python scripts/convert_gpkg_to_geojson.py
+uv run python pipelines/prediction_flow.py
+
+# Instalar dependencias frontend
+cd frontend && npm install
+
+# Iniciar dashboard
+npm run dev
+# → http://localhost:3000
+```
+
+### Pipeline completo (sin Docker)
 
 ```bash
 # Instalar dependencias
 uv sync
 
-# Generar datasets (requiere datos raw)
+# Generar datasets
 uv run python scripts/build_grid_v3.py
 
-# Entrenar y registrar modelo
+# Entrenar modelo
 uv run python pipelines/training_flow.py
 
-# Levantar API en desarrollo
+# Generar predicciones semanales
+uv run python pipelines/prediction_flow.py
+
+# Levantar API
 uv run uvicorn experiment.api.main:app --reload --port 8000
 
 # MLflow UI
@@ -204,10 +243,25 @@ uv run pytest tests/unit/ -q
 | GET | `/health/live` | Liveness probe (Docker) |
 | GET | `/health/ready` | Readiness probe (Docker) |
 | GET | `/metadata` | Metadatos del modelo en producción |
+| GET | `/geojson/cuencas` | GeoJSON de las 549 cuencas HydroSHEDS (Leaflet) |
+| GET | `/impacto` | Impacto económico histórico por cuenca UNGRD 2019-2022 |
+| GET | `/predicciones/semana-actual` | Predicciones ML del pipeline semanal (549 cuencas) |
 | POST | `/predict` | Predicción para una cuenca |
 | POST | `/predict/batch` | Mapa de riesgo (hasta 549 cuencas) |
 
 Documentación interactiva: `http://localhost:8000/docs`
+
+---
+
+## Dashboard — Vistas
+
+| Vista | URL | Descripción |
+|---|---|---|
+| Mapa de Riesgo | `/` | Mapa coroplético Leaflet con 549 cuencas coloreadas por predicción ML semanal. Click en cuenca → detalle + navegación a predicción. |
+| Predicción | `/prediccion/:id?` | Formulario de 14 features → gauge circular de probabilidad + badge de nivel. Se puede navegar desde el mapa. |
+| Impacto Económico | `/impacto` | Bar chart top 20 cuencas por costo histórico, scatter eventos vs costo, slider interactivo de BCR (40%–90%). |
+| Monitoring | `/monitoring` | Estado del sistema, tabla de drift KS por feature, log de predicciones recientes. |
+| Modelo | `/modelo` | Metadatos live desde MLflow: versión, 15 features agrupadas, métricas de rendimiento, umbrales. |
 
 ---
 
@@ -220,6 +274,7 @@ Documentación interactiva: `http://localhost:8000/docs`
 - **Evaluación honesta:** AUC-ROC en grid completo (114.741 instancias, holdout 2021-2022) = **0.6088**
   - _El AUC de 0.993 en pseudo-ausencias es artificialmente alto (leakage de diseño)_
 - **Criterio de Staging:** AUC ≥ 0.60 AND Precision ≥ 0.006 sobre grid completo (1.5× tasa base de eventos 0.4%)
+- **Interpretación del mapa:** el modelo tiene recall=0.80 / precision=0.15. En semanas de alta precipitación muchas cuencas aparecen en rojo — usar en conjunto con el índice de impacto económico para priorización operacional.
 
 ---
 
@@ -242,43 +297,31 @@ Documentación interactiva: `http://localhost:8000/docs`
 ```
 422 / 500 — "Feature names unseen at fit time: ORDER, soil_moisture_14d"
 ```
-
-**Causa:** El modelo en MLflow Registry (v1, Staging) fue entrenado con 12 features por un notebook anterior. La configuración actual (`cfg.all_features`) define 14 features — agrega `ORDER` y `soil_moisture_14d`.
-
-**Solución:** Reentrenar el modelo con el pipeline actualizado:
+**Solución:** Reentrenar el modelo:
 ```bash
 uv run python pipelines/training_flow.py
 ```
-Esto registra una nueva versión con las 14 features y la API la carga automáticamente en el siguiente arranque.
-
----
 
 ### `FutureWarning` en MLflow — `get_latest_versions` con stages
 
-**Síntoma:**
-```
-FutureWarning: ``stages`` param is deprecated ... use ``filter_string`` instead
-```
-
-**Causa:** MLflow ≥ 2.9 depreca el parámetro `stages` en `get_latest_versions()`.  
-**Impacto:** Solo es un warning — no bloquea el funcionamiento. Se resolverá al migrar a `MlflowClient.search_model_versions()`.
-
----
+**Síntoma:** `FutureWarning: stages param is deprecated`  
+**Impacto:** Solo warning — no bloquea el funcionamiento.
 
 ### API arranca en modo degradado (`status: degradado`)
 
 **Síntoma:** `GET /health` devuelve `"status": "degradado"` y `/predict` responde 503.
 
-**Causa:** No hay ningún modelo registrado en MLflow Registry con stage `Staging` o `None`.
-
 **Solución:**
 ```bash
-# 1. Asegurarse de que MLflow esté corriendo
-docker compose up mlflow -d    # o uv run mlflow ui --port 5001
-
-# 2. Entrenar y registrar el modelo
+# Entrenar y registrar el modelo
 uv run python pipelines/training_flow.py
 
-# 3. Reiniciar la API para que recargue el modelo
+# Reiniciar la API
 docker compose restart api
 ```
+
+### Mapa con demasiadas cuencas en rojo
+
+**Causa:** El modelo tiene precision=0.15 y recall=0.80. En semanas con precipitación extrema (ej. diciembre 2022, peor año del dataset), la mayoría de cuencas supera el umbral de Alto (≥0.60). Es técnicamente correcto dado el diseño PU-Learning.
+
+**Uso operacional recomendado:** Ordenar las cuencas de Alto riesgo por `indice_riesgo` histórico (impacto económico × eventos pasados) para priorizar la respuesta.

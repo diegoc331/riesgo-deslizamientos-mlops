@@ -11,12 +11,15 @@ Rutas:
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import FileResponse
 
 from experiment.api.dependencies import classify_risk
 from experiment.api.schemas import (
@@ -210,3 +213,68 @@ def predict_batch(req: BatchPredictRequest, request: Request):
         resultados=resultados,
         alto_riesgo=alto_riesgo,
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /geojson/cuencas
+# ---------------------------------------------------------------------------
+
+_GEOJSON_PATH = Path("data/raw/spatial/cuencas_antioquia.geojson")
+
+
+@router.get("/geojson/cuencas", tags=["datos"])
+def geojson_cuencas():
+    """GeoJSON de las 549 cuencas HydroSHEDS nivel 10 (Antioquia)."""
+    if not _GEOJSON_PATH.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="GeoJSON no encontrado. Ejecutar scripts/convert_gpkg_to_geojson.py primero.",
+        )
+    return FileResponse(_GEOJSON_PATH, media_type="application/geo+json")
+
+
+# ---------------------------------------------------------------------------
+# GET /impacto
+# ---------------------------------------------------------------------------
+
+_IMPACTO_PATH = Path("data/processed/impacto_economico_por_cuenca.csv")
+
+
+@router.get("/impacto", tags=["datos"])
+def impacto_economico():
+    """Impacto económico histórico por cuenca UNGRD 2019-2022."""
+    if not _IMPACTO_PATH.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="Archivo de impacto no encontrado. Ejecutar notebook 05 primero.",
+        )
+    df = pd.read_csv(_IMPACTO_PATH)
+    return df.fillna(0).to_dict(orient="records")
+
+
+# ---------------------------------------------------------------------------
+# GET /predicciones/semana-actual
+# ---------------------------------------------------------------------------
+
+_PRED_PATH = Path("data/processed/predicciones_semana_actual.json")
+
+
+@router.get("/predicciones/semana-actual", tags=["predicción"])
+def predicciones_semana_actual():
+    """
+    Predicciones ML para las 549 cuencas de la semana más reciente.
+
+    Generado por pipelines/prediction_flow.py (Prefect, schedule: lunes 6:30 AM).
+    Ejecutar manualmente:
+        uv run python pipelines/prediction_flow.py
+    """
+    if not _PRED_PATH.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                "No hay predicciones disponibles. "
+                "Ejecutar: uv run python pipelines/prediction_flow.py"
+            ),
+        )
+    with open(_PRED_PATH, encoding="utf-8") as f:
+        return json.load(f)
