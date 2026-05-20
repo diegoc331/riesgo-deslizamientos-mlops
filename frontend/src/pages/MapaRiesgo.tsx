@@ -24,7 +24,7 @@ function formatSemana(s: string): string {
 export default function MapaRiesgo() {
   const navigate = useNavigate();
   const { data: impacto = [], isLoading: loadingImpacto } = useImpacto();
-  const { data: semanasData } = useSemanasDisponibles();
+  const { data: semanasData, isError: semanasError, isLoading: semanasLoading } = useSemanasDisponibles();
   const [semanaSeleccionada, setSemanaSeleccionada] = useState<string | null>(null);
 
   const { data: semanaPredActual, isLoading: loadingActual } = useSemanaPredictions();
@@ -292,20 +292,28 @@ export default function MapaRiesgo() {
 
           <div style={{ borderTop: '1px solid var(--color-border)', paddingTop: 14 }}>
             <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-muted)', marginBottom: 6 }}>SEMANA DE ANÁLISIS</div>
-            <select
-              value={semanaSeleccionada ?? ''}
-              onChange={e => setSemanaSeleccionada(e.target.value || null)}
-              style={{
-                width: '100%', fontSize: 12, padding: '5px 6px',
-                border: '1px solid var(--color-border)', borderRadius: 6,
-                background: 'var(--color-bg)', color: 'var(--color-text)',
-              }}
-            >
-              <option value="">{semanasData ? 'Semana actual (ML)' : 'Cargando semanas...'}</option>
-              {semanasData && [...semanasData.semanas].reverse().map(s => (
-                <option key={s} value={s}>{formatSemana(s)}</option>
-              ))}
-            </select>
+            {semanasError ? (
+              <div style={{ fontSize: 11, color: 'var(--color-text-muted)', padding: '5px 0' }}>
+                Semanas históricas requieren el backend activo.
+              </div>
+            ) : (
+              <select
+                value={semanaSeleccionada ?? ''}
+                onChange={e => setSemanaSeleccionada(e.target.value || null)}
+                disabled={semanasLoading}
+                style={{
+                  width: '100%', fontSize: 12, padding: '5px 6px',
+                  border: '1px solid var(--color-border)', borderRadius: 6,
+                  background: 'var(--color-bg)', color: 'var(--color-text)',
+                  opacity: semanasLoading ? 0.5 : 1,
+                }}
+              >
+                <option value="">{semanasLoading ? 'Cargando...' : 'Semana actual (ML)'}</option>
+                {semanasData && [...semanasData.semanas].reverse().map(s => (
+                  <option key={s} value={s}>{formatSemana(s)}</option>
+                ))}
+              </select>
+            )}
             {loadingHistorica && (
               <div style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4 }}>Calculando predicciones...</div>
             )}

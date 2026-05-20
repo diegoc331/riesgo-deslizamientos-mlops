@@ -34,7 +34,7 @@ interface FilaTabla {
 export default function Prioridades() {
   const navigate = useNavigate();
   const { data: impacto = [], isLoading: loadingImpacto } = useImpacto();
-  const { data: semanasData } = useSemanasDisponibles();
+  const { data: semanasData, isError: semanasError } = useSemanasDisponibles();
   const [semanaSeleccionada, setSemanaSeleccionada] = useState<string | null>(null);
 
   const { data: semanaPredActual, isLoading: loadingActual } = useSemanaPredictions();
@@ -126,19 +126,20 @@ export default function Prioridades() {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-          {semanasData && (
+          {!semanasError && (
             <select
               value={semanaSeleccionada ?? ''}
               onChange={e => setSemanaSeleccionada(e.target.value || null)}
+              disabled={!semanasData}
               style={{
                 fontSize: 12, padding: '6px 10px',
                 border: '1px solid var(--color-border)', borderRadius: 6,
                 background: 'var(--color-bg)', color: 'var(--color-text)',
-                maxWidth: 280,
+                maxWidth: 280, opacity: !semanasData ? 0.5 : 1,
               }}
             >
-              <option value="">Semana actual (pipeline ML)</option>
-              {[...semanasData.semanas].reverse().map(s => (
+              <option value="">{semanasData ? 'Semana actual (pipeline ML)' : 'Cargando...'}</option>
+              {semanasData && [...semanasData.semanas].reverse().map(s => (
                 <option key={s} value={s}>{formatSemana(s)}</option>
               ))}
             </select>
