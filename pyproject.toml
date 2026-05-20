@@ -49,7 +49,7 @@ pythonpath = ["src"]
 testpaths = ["tests"]
 
 [tool.ruff]
-exclude = ["notebooks/", ".venv/", "docs/"]
+exclude = ["notebooks/", ".venv/", "docs/", ".agents/"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W"]
@@ -57,4 +57,4 @@ ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
 "pipelines/*.py" = ["E402"]
-"scripts/*.py" = ["E402", "F401", "F541"]
+"scripts/*.py" = ["E402", "F401", "F541", "F841"]

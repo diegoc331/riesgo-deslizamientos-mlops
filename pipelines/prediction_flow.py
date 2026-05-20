@@ -33,8 +33,12 @@ from prefect import flow, get_run_logger, task
 
 from experiment.config import ExperimentConfig, load_config
 
-_DEFAULT_GRID_FULL = str(_PROJECT_ROOT / "data" / "processed" / "grid_completo_v3.parquet")
-_DEFAULT_OUTPUT = str(_PROJECT_ROOT / "data" / "processed" / "predicciones_semana_actual.json")
+_DEFAULT_GRID_FULL = str(
+    _PROJECT_ROOT / "data" / "processed" / "grid_completo_v3.parquet"
+)
+_DEFAULT_OUTPUT = str(
+    _PROJECT_ROOT / "data" / "processed" / "predicciones_semana_actual.json"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -43,7 +47,9 @@ _DEFAULT_OUTPUT = str(_PROJECT_ROOT / "data" / "processed" / "predicciones_seman
 
 
 @task(name="cargar-ultima-semana")
-def task_cargar_ultima_semana(grid_full_path: str, cfg: ExperimentConfig) -> tuple[pd.DataFrame, list[str], str]:
+def task_cargar_ultima_semana(
+    grid_full_path: str, cfg: ExperimentConfig
+) -> tuple[pd.DataFrame, list[str], str]:
     logger = get_run_logger()
 
     df = pd.read_parquet(grid_full_path)
@@ -102,12 +108,14 @@ def task_inferir(
         prob = round(float(probas[i]), 4)
         nivel = "Alto" if prob >= 0.60 else "Medio" if prob >= 0.30 else "Bajo"
         hybas = int(row["HYBAS_ID"])
-        resultados.append({
-            "hybas_id": hybas,
-            "probabilidad_deslizamiento": prob,
-            "nivel_riesgo": nivel,
-            "timestamp": ahora,
-        })
+        resultados.append(
+            {
+                "hybas_id": hybas,
+                "probabilidad_deslizamiento": prob,
+                "nivel_riesgo": nivel,
+                "timestamp": ahora,
+            }
+        )
         if nivel == "Alto":
             alto_riesgo.append(hybas)
 

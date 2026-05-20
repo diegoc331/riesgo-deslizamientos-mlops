@@ -21,7 +21,11 @@ def main() -> None:
     gdf = gpd.read_file(GPKG)
     print(f"  {len(gdf)} cuencas cargadas. CRS original: {gdf.crs}")
 
-    cols = [c for c in ["HYBAS_ID", "SUB_AREA", "UP_AREA", "DIST_MAIN", "ORDER", "geometry"] if c in gdf.columns]
+    cols = [
+        c
+        for c in ["HYBAS_ID", "SUB_AREA", "UP_AREA", "DIST_MAIN", "ORDER", "geometry"]
+        if c in gdf.columns
+    ]
     gdf = gdf[cols].to_crs(epsg=4326)
 
     OUT.parent.mkdir(parents=True, exist_ok=True)
