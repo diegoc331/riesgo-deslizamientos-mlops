@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   ScatterChart, Scatter, CartesianGrid, Legend,
@@ -6,22 +6,10 @@ import {
 import KpiCard from '../components/ui/KpiCard';
 import { useImpacto } from '../api/predict';
 
-const COSTO_SISTEMA = 200;
-
 export default function ImpactoEconomico() {
   const { data: impacto = [], isLoading } = useImpacto();
-  const [factor, setFactor] = useState(40);
 
-  const bcr = useMemo(() => {
-    const beneficio = 210_400 * (factor / 100) * 0.8;
-    return (beneficio / COSTO_SISTEMA).toFixed(2);
-  }, [factor]);
-
-  const beneficio = useMemo(() => {
-    return (210_400 * (factor / 100) * 0.8).toFixed(0);
-  }, [factor]);
-
-  const top20 = useMemo(() => (
+  const top20Costo = useMemo(() => (
     [...impacto]
       .sort((a, b) => b.costo_m_cop - a.costo_m_cop)
       .slice(0, 20)
@@ -32,6 +20,13 @@ export default function ImpactoEconomico() {
         eventos: i.n_eventos,
         fallecidos: i.fallecidos,
       }))
+  ), [impacto]);
+
+  const top10Fallecidos = useMemo(() => (
+    [...impacto]
+      .filter(i => i.fallecidos > 0)
+      .sort((a, b) => b.fallecidos - a.fallecidos)
+      .slice(0, 10)
   ), [impacto]);
 
   const scatter = useMemo(() => (
@@ -56,16 +51,16 @@ export default function ImpactoEconomico() {
 
       {/* KPIs */}
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <KpiCard label="Costo total" value="$210,400 M" sub="COP (2019-2022)" color="var(--color-alto)" />
-        <KpiCard label="Fallecidos" value="115" sub="UNGRD registrados" />
-        <KpiCard label="Personas afectadas" value="56,353" sub="evacuadas / damnificadas" />
-        <KpiCard label={`BCR (factor ${factor}%)`} value={`${bcr}×`} sub="≥1 = proyecto rentable" color="var(--color-bajo)" />
+        <KpiCard label="Costo total" value="$210.400 M" sub="COP (2019-2022)" color="var(--color-alto)" />
+        <KpiCard label="Fallecidos" value="115" sub="UNGRD registrados" color="var(--color-alto)" />
+        <KpiCard label="Personas afectadas" value="56.353" sub="evacuadas / damnificadas" />
         <KpiCard label="Cuencas con eventos" value="91" sub="de 549 (16.6%)" />
+        <KpiCard label="BCR" value="2.11×" sub="escenario conservador 40%" color="var(--color-bajo)" />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
 
-        {/* Bar chart */}
+        {/* Bar chart costo */}
         <div style={{
           background: 'var(--color-surface)', border: '1px solid var(--color-border)',
           borderRadius: 'var(--radius)', padding: 20,
@@ -74,7 +69,7 @@ export default function ImpactoEconomico() {
             TOP 20 CUENCAS POR COSTO HISTÓRICO (M COP)
           </h2>
           <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={top20} layout="vertical" margin={{ left: 10, right: 20 }}>
+            <BarChart data={top20Costo} layout="vertical" margin={{ left: 10, right: 20 }}>
               <XAxis type="number" tick={{ fontSize: 11 }} />
               <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={48} />
               <Tooltip
@@ -86,7 +81,7 @@ export default function ImpactoEconomico() {
           </ResponsiveContainer>
         </div>
 
-        {/* Scatter */}
+        {/* Scatter eventos vs costo */}
         <div style={{
           background: 'var(--color-surface)', border: '1px solid var(--color-border)',
           borderRadius: 'var(--radius)', padding: 20,
@@ -121,38 +116,38 @@ export default function ImpactoEconomico() {
         </div>
       </div>
 
-      {/* BCR slider */}
+      {/* Tabla top 10 fallecidos */}
       <div style={{
         background: 'var(--color-surface)', border: '1px solid var(--color-border)',
         borderRadius: 'var(--radius)', padding: 20,
       }}>
         <h2 style={{ fontSize: 14, fontWeight: 600, marginBottom: 16, color: 'var(--color-text-muted)' }}>
-          ANÁLISIS BENEFICIO-COSTO — SENSIBILIDAD AL FACTOR DE REDUCCIÓN DE DAÑOS
+          TOP 10 CUENCAS POR FALLECIDOS HISTÓRICOS
         </h2>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 20 }}>
-          <div style={{ flex: 1 }}>
-            <label style={{ fontSize: 13, fontWeight: 500, display: 'block', marginBottom: 8 }}>
-              Factor de reducción de daños: <b>{factor}%</b>
-            </label>
-            <input
-              type="range" min={10} max={90} step={5} value={factor}
-              onChange={e => setFactor(parseInt(e.target.value))}
-              style={{ width: '100%', accentColor: 'var(--color-navy)' }}
-            />
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--color-text-muted)' }}>
-              <span>10% (conservador)</span><span>90% (optimista)</span>
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 12 }}>
-            <KpiCard label="BCR" value={`${bcr}×`} color={parseFloat(bcr) >= 1 ? 'var(--color-bajo)' : 'var(--color-alto)'} />
-            <KpiCard label="Beneficio estimado" value={`$${parseInt(beneficio).toLocaleString('es-CO')} M`} sub="COP" />
-            <KpiCard label="Costo sistema (4 años)" value="$200 M" sub="COP" />
-          </div>
-        </div>
-
-        <div style={{ fontSize: 12, color: 'var(--color-text-muted)', borderTop: '1px solid var(--color-border)', paddingTop: 12 }}>
-          Punto de equilibrio: reducción ≥ {factor < 20 ? '40%' : 'este nivel'} de daños. Recall del modelo: 0.80 (detecta 80% de eventos). BCR base calculado con factor 40%.
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead>
+            <tr style={{ borderBottom: '2px solid var(--color-border)', background: 'var(--color-bg)' }}>
+              {['Rank', 'HYBAS_ID', 'Fallecidos', 'Heridos', 'Personas afectadas', 'Eventos', 'Costo M COP'].map(h => (
+                <th key={h} style={{ textAlign: 'left', padding: '8px 14px', color: 'var(--color-text-muted)', fontSize: 11, fontWeight: 600 }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {top10Fallecidos.map((i, idx) => (
+              <tr key={i.HYBAS_ID} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                <td style={{ padding: '8px 14px', fontWeight: 700, color: idx < 3 ? 'var(--color-alto)' : 'var(--color-text-muted)' }}>#{idx + 1}</td>
+                <td style={{ padding: '8px 14px', fontFamily: 'monospace', fontSize: 12 }}>{i.HYBAS_ID}</td>
+                <td style={{ padding: '8px 14px', fontWeight: 700, color: 'var(--color-alto)' }}>{i.fallecidos}</td>
+                <td style={{ padding: '8px 14px' }}>{i.heridos > 0 ? i.heridos : '—'}</td>
+                <td style={{ padding: '8px 14px' }}>{i.personas > 0 ? i.personas.toLocaleString('es-CO') : '—'}</td>
+                <td style={{ padding: '8px 14px' }}>{i.n_eventos}</td>
+                <td style={{ padding: '8px 14px' }}>{i.costo_m_cop > 0 ? `$${i.costo_m_cop.toLocaleString('es-CO', { maximumFractionDigits: 0 })} M` : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div style={{ marginTop: 12, fontSize: 12, color: 'var(--color-text-muted)' }}>
+          Fuente: UNGRD (Unidad Nacional para la Gestión del Riesgo de Desastres) 2019-2022. Costo del sistema de predicción: $200 M COP. Recall del modelo: 0.80.
         </div>
       </div>
     </div>

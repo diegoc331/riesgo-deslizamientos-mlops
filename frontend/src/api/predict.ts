@@ -60,6 +60,37 @@ export function useImpacto() {
   });
 }
 
+/** Lista de semanas históricas disponibles en el dataset (2019-2022). */
+export function useSemanasDisponibles() {
+  return useQuery<{ semanas: string[]; n_semanas: number }>({
+    queryKey: ['semanas-disponibles'],
+    queryFn: async () => {
+      const res = await client.get<{ semanas: string[]; n_semanas: number }>(
+        '/predicciones/semanas-disponibles'
+      );
+      return res.data;
+    },
+    staleTime: Infinity,
+    retry: false,
+  });
+}
+
+/** Predicciones para una semana histórica específica (requiere backend). */
+export function usePredicionesHistoricas(semana: string | null) {
+  return useQuery<BatchPredictResponse>({
+    queryKey: ['predicciones-historicas', semana],
+    queryFn: async () => {
+      const res = await client.get<BatchPredictResponse>('/predicciones/historico', {
+        params: { semana },
+      });
+      return res.data;
+    },
+    enabled: !!semana,
+    staleTime: 6 * 60 * 60_000,
+    retry: false,
+  });
+}
+
 /** Calcula semana_sin/cos y mes_sin/cos desde la fecha de hoy. */
 export function calcSeasonality() {
   const now = new Date();

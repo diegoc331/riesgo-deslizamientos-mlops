@@ -3,7 +3,8 @@ import { useHealth } from '../../api/health';
 
 const navItems = [
   { to: '/', label: 'Mapa', exact: true },
-  { to: '/prediccion', label: 'Predicción' },
+  { to: '/prioridades', label: 'Prioridades' },
+  { to: '/prediccion', label: 'Cuenca' },
   { to: '/impacto', label: 'Impacto' },
   { to: '/monitoring', label: 'Monitoring' },
   { to: '/modelo', label: 'Modelo' },

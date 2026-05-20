@@ -257,6 +257,116 @@ def impacto_economico():
 # ---------------------------------------------------------------------------
 
 _PRED_PATH = Path("data/processed/predicciones_semana_actual.json")
+_GRID_FULL_PATH = Path("data/processed/grid_completo_v3.parquet")
+
+# Cache en memoria del parquet histórico (cargado una sola vez por proceso)
+_grid_cache: pd.DataFrame | None = None
+
+
+def _get_grid() -> pd.DataFrame:
+    global _grid_cache
+    if _grid_cache is None:
+        df = pd.read_parquet(_GRID_FULL_PATH)
+        df["anio_semana"] = pd.PeriodIndex(df["anio_semana"], freq="W")
+        _grid_cache = df
+    return _grid_cache
+
+
+@router.get("/predicciones/semanas-disponibles", tags=["predicción"])
+def semanas_disponibles():
+    """Lista de semanas históricas disponibles en el dataset (2019-2022)."""
+    if not _GRID_FULL_PATH.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="Dataset histórico no encontrado. Ejecutar pipelines/data_flow.py primero.",
+        )
+    df = _get_grid()
+    semanas = sorted(df["anio_semana"].astype(str).unique().tolist())
+    return {"semanas": semanas, "n_semanas": len(semanas)}
+
+
+@router.get("/predicciones/historico", tags=["predicción"])
+def predicciones_historicas(semana: str, request: Request):
+    """
+    Predicciones para una semana histórica del dataset (2019-2022).
+
+    Parámetros
+    ----------
+    semana : string de periodo semanal, ej: "2022-07-11/2022-07-17"
+
+    Requiere modelo cargado en MLflow Registry.
+    """
+    model_state = request.app.state.model
+    if not model_state.loaded:
+        raise HTTPException(
+            status_code=503,
+            detail="Modelo no cargado. Verificar GET /health.",
+        )
+    if not _GRID_FULL_PATH.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="Dataset histórico no encontrado.",
+        )
+
+    df = _get_grid()
+
+    # Parsear semana: acepta "2022-07-11/2022-07-17" o "2022-07-11"
+    try:
+        fecha_inicio = semana.split("/")[0].strip()
+        periodo = pd.Period(fecha_inicio, freq="W")
+    except Exception:
+        raise HTTPException(
+            status_code=400, detail=f"Formato de semana inválido: {semana!r}"
+        )
+
+    df_sem = df[df["anio_semana"] == periodo].copy().reset_index(drop=True)
+    if df_sem.empty:
+        raise HTTPException(
+            status_code=404, detail=f"Semana {semana!r} no encontrada en el dataset."
+        )
+
+    # Usar feature_cols guardados en el ModelState (fuente de verdad)
+    feature_cols = [f for f in model_state.feature_cols if f in df_sem.columns]
+    if not feature_cols:
+        raise HTTPException(
+            status_code=500, detail="No se encontraron features válidas en el dataset."
+        )
+
+    X = df_sem[feature_cols].copy()
+    probas = model_state.pipeline.predict_proba(X)[:, 1]
+
+    ahora = datetime.now(timezone.utc).isoformat()
+    resultados = []
+    alto_riesgo = []
+
+    for i in range(len(df_sem)):
+        prob = round(float(probas[i]), 4)
+        nivel = classify_risk(prob)
+        hybas = int(df_sem.at[i, "HYBAS_ID"])
+        resultados.append(
+            {
+                "hybas_id": hybas,
+                "probabilidad_deslizamiento": prob,
+                "nivel_riesgo": nivel,
+                "timestamp": ahora,
+            }
+        )
+        if nivel == "Alto":
+            alto_riesgo.append(hybas)
+
+    n_alto = len(alto_riesgo)
+    n_medio = sum(1 for r in resultados if r["nivel_riesgo"] == "Medio")
+    n_bajo = sum(1 for r in resultados if r["nivel_riesgo"] == "Bajo")
+
+    return {
+        "semana": str(periodo),
+        "n_cuencas": len(resultados),
+        "resultados": resultados,
+        "alto_riesgo": alto_riesgo,
+        "resumen": {"alto": n_alto, "medio": n_medio, "bajo": n_bajo},
+        "generado_utc": ahora,
+        "features_usadas": feature_cols,
+    }
 
 
 @router.get("/predicciones/semana-actual", tags=["predicción"])

@@ -94,13 +94,19 @@ export default function Monitoring() {
           background: 'var(--color-surface)', border: '1px solid var(--color-border)',
           borderRadius: 'var(--radius)', padding: 20,
         }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <h2 style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-muted)' }}>DRIFT DE DATOS (KS Test, α=0.05)</h2>
             {nDrift > 0 && (
               <span style={{ background: '#fee2e2', color: '#991b1b', padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 600 }}>
                 {nDrift} feature{nDrift > 1 ? 's' : ''} con drift
               </span>
             )}
+          </div>
+          <div style={{
+            background: '#fffbeb', border: '1px solid #fbbf24', borderRadius: 6,
+            padding: '7px 12px', marginBottom: 14, fontSize: 12, color: '#92400e',
+          }}>
+            ⚠ <b>Datos de demostración.</b> En producción: ejecutar <code>save_reference(X_train)</code> tras entrenar y <code>detect_drift(X_new)</code> cada semana.
           </div>
 
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -136,14 +142,25 @@ export default function Monitoring() {
         </div>
       </div>
 
-      {/* Log de predicciones */}
+      {/* Log de predicciones — demo */}
       <div style={{
         background: 'var(--color-surface)', border: '1px solid var(--color-border)',
         borderRadius: 'var(--radius)', padding: 20,
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <h2 style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-muted)' }}>LOG DE PREDICCIONES RECIENTES</h2>
           <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>logs/predictions.jsonl</span>
+        </div>
+
+        <div style={{
+          background: '#fffbeb', border: '1px solid #fbbf24', borderRadius: 6,
+          padding: '8px 14px', marginBottom: 16, fontSize: 12, color: '#92400e',
+          display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <span>⚠</span>
+          <span>
+            <b>Datos de demostración.</b> El log real se activa cuando el pipeline está en producción continua y la API registra predicciones en <code>logs/predictions.jsonl</code>.
+          </span>
         </div>
 
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -156,7 +173,7 @@ export default function Monitoring() {
           </thead>
           <tbody>
             {PRED_DEMO.map((p, i) => (
-              <tr key={i} style={{ borderBottom: '1px solid var(--color-border)' }}>
+              <tr key={i} style={{ borderBottom: '1px solid var(--color-border)', opacity: 0.6 }}>
                 <td style={{ padding: '8px 14px', color: 'var(--color-text-muted)', fontFamily: 'monospace', fontSize: 12 }}>{p.ts}</td>
                 <td style={{ padding: '8px 14px', fontFamily: 'monospace' }}>{p.hybas}</td>
                 <td style={{ padding: '8px 14px', fontWeight: 600 }}>{(p.prob * 100).toFixed(1)}%</td>
@@ -168,11 +185,6 @@ export default function Monitoring() {
             ))}
           </tbody>
         </table>
-
-        <div style={{ marginTop: 12, display: 'flex', gap: 10 }}>
-          <button style={{ background: 'var(--color-border)', color: 'var(--color-text)' }}>Cargar más</button>
-          <button style={{ background: 'var(--color-navy)', color: '#fff' }}>Exportar CSV</button>
-        </div>
       </div>
     </div>
   );
