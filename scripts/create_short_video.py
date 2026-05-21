@@ -1,6 +1,6 @@
 """
 create_short_video.py
-Video de lanzamiento de VigilantIA (40s, 1080x1920).
+Video de lanzamiento de TerraAlert (40s, 1080x1920).
 App de alerta temprana de deslizamientos — Antioquia, Colombia.
 Tagline: "Predice. Protege. Previene."
 
@@ -18,7 +18,7 @@ import numpy as np
 from moviepy import ImageClip, concatenate_videoclips, vfx
 from PIL import Image, ImageDraw, ImageFont
 
-# ── Paleta VigilantIA ─────────────────────────────────────────────────────────
+# ── Paleta TerraAlert ─────────────────────────────────────────────────────────
 W, H = 1080, 1920
 BG = (8, 12, 22)
 BG2 = (11, 18, 34)
@@ -38,7 +38,7 @@ OUTPUT_DIR = ROOT / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
 OUTPUT_MP4 = OUTPUT_DIR / "deslizamientos_short.mp4"
 
-APP_NAME = "VigilantIA"
+APP_NAME = "TerraAlert"
 TAGLINE = "Predice. Protege. Previene."
 
 
@@ -171,7 +171,7 @@ def _cuencas_map(
 
 
 def _logo(draw: ImageDraw.Draw, cx: int, cy: int, size: int = 120) -> None:
-    """Dibuja el icono de VigilantIA: escudo + ojo + onda."""
+    """Dibuja el icono de TerraAlert: escudo + ojo + onda."""
     # Escudo
     s = size
     pts = [
@@ -233,9 +233,9 @@ def _slide_logo() -> Image.Image:
     f_tag = _font(38)
     f_sub = _font(26)
 
-    # Nombre partido en "Vigilant" + "IA" con color diferente
-    text_v = "Vigilant"
-    text_i = "IA"
+    # Nombre partido en "Terra" + "Alert" con color diferente
+    text_v = "Terra"
+    text_i = "Alert"
     w_v = _tw(draw, text_v, f_name)
     w_i = _tw(draw, text_i, f_ia)
     total_w = w_v + w_i
@@ -297,7 +297,7 @@ def _slide_problema() -> Image.Image:
 
 
 def _slide_pivot() -> Image.Image:
-    """3s — Giro: VigilantIA lo cambia."""
+    """3s — Giro: TerraAlert lo cambia."""
     img = Image.new("RGB", (W, H), (5, 14, 18))
     img = _glow(
         img,
@@ -356,7 +356,7 @@ def _slide_app_mapa() -> Image.Image:
     # Logo pequeño en app header
     _logo(screen_draw, sx + 46, app_bar_y + 36, size=22)
     screen_draw.text(
-        (sx + 80, app_bar_y + 18), "VigilantIA", fill=TEXT, font=_font(28, bold=True)
+        (sx + 80, app_bar_y + 18), "TerraAlert", fill=TEXT, font=_font(28, bold=True)
     )
 
     # Notificacion activa en app bar
@@ -529,7 +529,7 @@ def _slide_notificacion() -> Image.Image:
 
 
 def _slide_usuarios() -> Image.Image:
-    """4s — Quienes usan VigilantIA. Usuarios finales institucionales."""
+    """4s — Quienes usan TerraAlert. Usuarios finales institucionales."""
     img = _gradient((8, 12, 22), (10, 18, 32))
     draw = ImageDraw.Draw(img)
 
@@ -594,7 +594,7 @@ def _slide_usuarios() -> Image.Image:
 
 
 def _slide_cta() -> Image.Image:
-    """8s — CTA: descarga / accede a VigilantIA."""
+    """8s — CTA: descarga / accede a TerraAlert."""
     img = Image.new("RGB", (W, H), (5, 12, 20))
     img = _glow(
         img,
@@ -618,7 +618,7 @@ def _slide_cta() -> Image.Image:
     _logo(draw, W // 2, 320, size=110)
 
     # Nombre
-    text_v, text_i = "Vigilant", "IA"
+    text_v, text_i = "Terra", "Alert"
     f_name = _font(110, bold=True)
     w_v = _tw(draw, text_v, f_name)
     w_i = _tw(draw, text_i, f_name)
@@ -638,8 +638,8 @@ def _slide_cta() -> Image.Image:
     y = _cx(draw, "Disponible para tu organizacion:", y, f_md, TEXT) + 30
 
     opciones = [
-        ("Web App", "vigilantia.app"),
-        ("API REST", "api.vigilantia.app/predict"),
+        ("Web App", "terralert.app"),
+        ("API REST", "api.terralert.app/predict"),
         ("App Movil", "iOS  &  Android — Proximamente"),
     ]
 
@@ -679,7 +679,7 @@ def _clip(
 
 def create_video(output: Path = OUTPUT_MP4, fps: int = FPS) -> None:
     scenes = [
-        (_slide_logo, 4.0, "Logo reveal — VigilantIA"),
+        (_slide_logo, 4.0, "Logo reveal — TerraAlert"),
         (_slide_problema, 4.0, "El problema"),
         (_slide_pivot, 3.0, "Pivot — lo vio venir"),
         (_slide_app_mapa, 5.0, "App — mapa de cuencas"),

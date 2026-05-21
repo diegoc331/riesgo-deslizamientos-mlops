@@ -28,7 +28,7 @@ export default function Navbar() {
       zIndex: 1000,
     }}>
       <span style={{ color: '#fff', fontWeight: 700, fontSize: 16, marginRight: 32, letterSpacing: '-0.3px' }}>
-        VigilantIA
+        TerraAlert
       </span>
 
       <div style={{ display: 'flex', gap: 4, flex: 1 }}>
