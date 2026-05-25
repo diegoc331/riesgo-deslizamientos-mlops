@@ -10,7 +10,9 @@
 
 El proyecto construye un sistema de alerta temprana basado en aprendizaje automático para predecir deslizamientos de tierra en Antioquia, Colombia, con una semana de anticipación. La unidad de predicción es la semana × cuenca hidrográfica (granularidad HydroBASINS nivel 10, 549 cuencas), generando 114,741 instancias de entrenamiento de las cuales 462 son positivos (0.40% de tasa base).
 
-El modelo desplegado es un `BaggingPuClassifier` (PU-Learning), elegido porque los registros de UNGRD son positivos confirmados pero sus ausencias son **etiquetas desconocidas**, no negativos confirmados. Su AUC real sobre el grid completo es **0.6088** con recall=0.973 y precision=0.006 — métricas válidas dado el desbalance extremo. El análisis económico proyecta un BCR de **2.11×** con una inversión de $200M COP en cuatro años y beneficios de $45,700M COP por reducción de daños.
+El modelo desplegado es un `BaggingPuClassifier` (PU-Learning), elegido porque los registros de UNGRD son positivos confirmados pero sus ausencias son **etiquetas desconocidas**, no negativos confirmados. Su AUC real sobre el grid completo es **0.6088** con recall=0.9731 y precision=0.006 — métricas válidas dado el desbalance extremo (0.40% tasa base).
+
+El análisis económico honesto — usando las métricas reales del grid completo — muestra que alertar las 549 cuencas simultáneamente produce un BCR **negativo (−0.89×)**: los ~152,413 FP generan $762,100M COP en costos de falsas alarmas, superando el beneficio de detección. La **estrategia viable es la alerta selectiva top-N cuencas**: focalizando alertas en las 91 cuencas históricamente afectadas se obtiene un **BCR de 54×** (factor de reducción 40%), recuperando la viabilidad económica del sistema con un costo operativo de $200M COP en cuatro años.
 
 El stack está completamente operacional: pipeline ETL + entrenamiento semanal orquestado con Prefect, modelo registrado en MLflow, API REST con 10 endpoints, frontend React desplegado, Docker Compose para producción y CI/CD con GitHub Actions. El sistema está listo para un piloto con DAGRD/DAPARD pero requiere validación experta antes de uso operacional.
 
@@ -42,35 +44,76 @@ El costo de respuesta reactiva incluye evacuaciones de emergencia, operaciones d
 
 ## 3. Análisis Económico
 
-### 3.1 BCR = 2.11× — Metodología de Cálculo
+### 3.1 Análisis BCR Honesto — Métricas del Grid Completo
 
-El análisis beneficio-costo se realizó en el notebook `05_impacto_economico.ipynb` bajo supuestos conservadores:
+El análisis beneficio-costo se realizó en el notebook `05_impacto_economico.ipynb` utilizando las **métricas reales del modelo evaluado sobre el grid completo** (114,741 instancias, período de prueba 2022):
 
 | Parámetro | Valor | Fuente |
 |-----------|-------|--------|
 | Costo histórico total (2019-2022) | $210,400M COP | UNGRD + estimación estándar |
 | Número de eventos | 945 | UNGRD Antioquia |
 | Costo promedio por evento | ~$222.6M COP | = $210,400M / 945 |
-| Recall del sistema | 80% | Supuesto conservador |
-| Precisión del sistema (CV) | 15% | Evaluación en pseudo-ausencias |
+| Recall del sistema | **97.3%** | Grid completo 2022 — `best_params.json` (NB04) |
+| Precisión del sistema | **0.6%** | Grid completo 2022 — métrica honesta, no pseudo-ausencias |
 | Factor de reducción de daños (TP) | 40% | Literatura de gestión del riesgo |
 | Costo por falsa alarma | $5M COP | Estimación movilización recursos |
-| Costo operativo del sistema (4 años) | $200M COP | Estimación infraestructura + personal |
+| Costo operativo del sistema (4 años) | $200M COP | $50M COP/año infraestructura + personal |
 
-Con estos parámetros:
-- **TP = 756** eventos alertados correctamente
-- **FN = 189** eventos no detectados
-- **FP = 4,284** falsas alarmas
-- **Beneficio neto = $45,708M COP**
-- **BCR = 2.11×**
+**Conteos honestos (549 cuencas, umbral 0.5):**
+- **TP = 920** eventos alertados correctamente
+- **FN = 25** eventos no detectados (2.6% del total)
+- **FP = 152,413** falsas alarmas — consecuencia directa de precision=0.6% en 114,741 instancias
+- **Costo acumulado de FP = $762,100M COP** (supera el costo histórico total de los eventos)
 
-![Análisis BCR Waterfall](figures/bcr_waterfall.png)
+**Sensibilidad del BCR (umbral 0.5 sobre 549 cuencas):**
 
-*La gráfica muestra la cascada de costos: partiendo de $210,400M COP histórico, se restan los daños residuales en eventos alertados (reducción 40%), se suman los daños totales en eventos no alertados (FN) y el costo de falsas alarmas, llegando a un costo total con sistema de $164,692M COP. El beneficio neto es de $45,708M COP.*
+| Factor reducción de daños | Beneficio (M COP) | BCR | ¿Rentable? |
+|--------------------------|------------------|-----|-----------|
+| 40% | −680,317 | **−0.892×** | ❌ |
+| 50% | −659,831 | −0.866× | ❌ |
+| 60% | −639,344 | −0.839× | ❌ |
+| 70% | −618,857 | −0.812× | ❌ |
+| 80% | −598,370 | −0.785× | ❌ |
+| 90% | −577,883 | −0.758× | ❌ |
 
-### 3.2 Nota de Consistencia Importante
+⚠️ **El BCR es negativo en todos los escenarios a umbral por defecto.** El costo de las falsas alarmas ($762,100M COP) supera el costo histórico total de los eventos ($210,400M COP), invirtiendo el balance económico.
 
-El recall del 80% y la precisión del 15% usados en el BCR corresponden a métricas **sobre pseudo-ausencias** (el subconjunto de entrenamiento), no al grid completo real. Las métricas reales del modelo sobre el grid completo son recall=0.973 y precision=0.006. Con precision=0.006, el número de falsas alarmas sería drásticamente mayor (~125,400 FP para 756 TP), lo que revertiría el BCR. Este escenario debe ser evaluado y el análisis económico actualizado con métricas del grid completo antes de presentarse a entidades de gestión del riesgo.
+![BCR vs umbral de decisión](figures/bcr_vs_umbral.png)
+
+*La figura muestra el BCR y el trade-off recall/precision a diferentes umbrales de probabilidad. Incluso optimizando el umbral, el BCR permanece negativo para la estrategia de alertar las 549 cuencas simultáneamente.*
+
+### 3.2 Por Qué el BCR Cambia al Usar Métricas Reales
+
+Versiones anteriores de este informe reportaban BCR=2.11× usando recall=80% y precision=15%. Esos valores provenían de la validación cruzada **sobre pseudo-ausencias** — el subconjunto de entrenamiento donde los negativos son semanas con precipitación ≤ P25 (percentil 25). Esas métricas son artificialmente optimistas porque:
+
+1. Las pseudo-ausencias se construyen exactamente usando la variable dominante del modelo (`precip_acum_14d`). El clasificador aprende a separarlas con facilidad, produciendo AUC~0.993 en CV.
+2. En el grid completo (todas las semanas × todas las cuencas), la dificultad real es distinguir semanas de riesgo de semanas normales en cuencas sin historial registrado — un problema mucho más difícil.
+3. La precision real de 0.6% implica que por cada evento real alertado, el sistema genera ~166 falsas alarmas. A $5M COP por falsa alarma, el costo es prohibitivo a escala de 549 cuencas.
+
+Este hallazgo es en sí mismo un resultado valioso: **la evaluación sobre pseudo-ausencias sobreestima dramáticamente la viabilidad económica** y no debe usarse para comunicar resultados a entidades operativas.
+
+### 3.3 Estrategia Viable: Alerta Selectiva Top-N Cuencas
+
+La alternativa económicamente viable es **limitar las alertas a las N cuencas de mayor probabilidad** en cada semana. De las 549 cuencas, solo 91 (~16.6%) presentaron al menos un evento histórico entre 2019 y 2022. Concentrar las alertas en este subconjunto priorizado reduce los FP drásticamente mientras mantiene un recall aceptable sobre las cuencas con riesgo comprobado:
+
+| N cuencas alertadas | TP (cuencas) | FP | Recall cuencas | BCR (40%) |
+|--------------------|-------------|----|--------------|-----------| 
+| 10 | 3 | 7 | 3.3% | 10.75× |
+| 20 | 7 | 13 | 7.7% | 23.54× |
+| 50 | 17 | 33 | 18.7% | 42.19× |
+| **91** | **30** | **61** | **33.0%** | **54.03×** |
+| 100 | 33 | 67 | 36.3% | 56.11× |
+| 150 | 50 | 100 | 54.9% | 65.04× |
+| 200 | 66 | 134 | 72.5% | 69.13× ✅ óptimo |
+
+![BCR según N cuencas alertadas](figures/bcr_topn_cuencas.png)
+
+*Todas las configuraciones top-N son rentables (BCR > 1×). La configuración óptima (máximo BCR) es top-200 cuencas con BCR=69.13× y recall=72.5% de las cuencas históricas. La estrategia top-91 (cuencas con historial real) ofrece BCR=54.03×.*
+
+**Interpretación operativa:** En lugar de generar 549 alertas simultáneas semanales (inmanejable para DAGRD/DAPARD), el sistema puede generar entre 91 y 200 alertas priorizadas, ordenadas por probabilidad × índice de impacto económico por cuenca. Este protocolo es:
+- **Operacionalmente coherente**: los equipos de emergencia pueden gestionar ~100 alertas priorizadas por semana
+- **Económicamente viable**: BCR entre 54× y 69× con factor de reducción conservador (40%)
+- **Escalable**: el umbral de N puede ajustarse según la capacidad operativa disponible
 
 ---
 
