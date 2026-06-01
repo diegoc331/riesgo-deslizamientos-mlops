@@ -574,7 +574,7 @@ Los tests de API usan `MockState` y `patch("experiment.api.main.build_model_stat
 
 | Limitación | Impacto | Estado |
 |-----------|---------|--------|
-| BCR calculado con métricas de pseudo-ausencias (no grid completo) | Sobreestima el beneficio económico | Pendiente corrección |
+| BCR calculado con métricas de pseudo-ausencias (no grid completo) | Sobreestima el beneficio económico | ✅ Corregido — sección 3 usa métricas del grid completo (recall=0.9731, precision=0.006) |
 | Monitoreo sin reentrenamiento automático | Requiere intervención manual | En roadmap |
 | ERA5 requiere credenciales CDS | Humedad del suelo no disponible en todos los entornos | Fallback implementado |
 | No hay tests de integración en CI | Bugs en la interacción API-MLflow no se detectan automáticamente | Pendiente |
@@ -618,7 +618,7 @@ Las predicciones son **confiables como señal de riesgo elevado**, no como certe
 
 ### Próximo Hito Más Importante
 
-**Corrección del análisis económico** con métricas del grid completo. El BCR es el argumento central para justificar la inversión institucional. Si ese número es incorrecto, compromete la credibilidad de todo el proyecto ante los tomadores de decisión.
+**Validación experta con DAGRD/DAPARD.** El análisis económico ya usa métricas reales del grid completo (BCR honesto documentado en sección 3). El siguiente paso es someter las predicciones a revisión de técnicos de gestión del riesgo y definir los protocolos operativos de respuesta por nivel de alerta antes del piloto institucional.
 
 ---
 

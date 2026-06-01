@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TerraAlert — Sistema de Predicción de Deslizamientos</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --green:   #2D6A4F;
+  --green2:  #40916C;
+  --green3:  #74C69D;
+  --green4:  #D8F3DC;
+  --dark:    #1B2A3A;
+  --mid:     #4A5568;
+  --light:   #F0F4F1;
+  --white:   #FFFFFF;
+  --red:     #C0392B;
+  --red-l:   #FDECEA;
+  --amber:   #D97706;
+  --shadow:  0 4px 24px rgba(0,0,0,.08);
+}
+
+html, body { width:100%; height:100%; overflow:hidden; font-family:'Inter',sans-serif; background:#FAFAFA; color:var(--dark); }
+
+/* ── PROGRESS BAR ── */
+#progress-bar {
+  position:fixed; top:0; left:0; height:4px;
+  background:linear-gradient(90deg,var(--green),var(--green3));
+  width:14.29%; transition:width .4s ease; z-index:100;
+}
+
+/* ── SLIDE COUNTER ── */
+#counter {
+  position:fixed; top:18px; right:24px; z-index:100;
+  font-size:13px; font-weight:600; color:var(--mid); letter-spacing:.05em;
+}
+
+/* ── NAV DOTS ── */
+#dots {
+  position:fixed; bottom:22px; left:50%; transform:translateX(-50%);
+  display:flex; gap:10px; z-index:100;
+}
+.dot {
+  width:8px; height:8px; border-radius:50%;
+  background:#CBD5E0; cursor:pointer; transition:all .25s;
+}
+.dot.active { background:var(--green); transform:scale(1.35); }
+
+/* ── NAV ARROWS ── */
+.nav-btn {
+  position:fixed; top:50%; transform:translateY(-50%);
+  width:48px; height:48px; border-radius:50%;
+  border:2px solid var(--green); background:var(--white);
+  color:var(--green); font-size:20px; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  transition:all .2s; z-index:100; box-shadow:var(--shadow);
+}
+.nav-btn:hover { background:var(--green); color:var(--white); }
+#btn-prev { left:16px; }
+#btn-next { right:16px; }
+
+/* ── SLIDES ── */
+.slide {
+  position:absolute; top:0; left:0; width:100%; height:100%;
+  display:flex; flex-direction:column; justify-content:center; align-items:center;
+  padding:60px 80px 56px;
+  opacity:0; pointer-events:none;
+  transform:translateX(40px);
+  transition:opacity .45s ease, transform .45s ease;
+}
+.slide.active {
+  opacity:1; pointer-events:auto; transform:translateX(0);
+}
+.slide.exit-left  { opacity:0; transform:translateX(-40px); }
+.slide.exit-right { opacity:0; transform:translateX(40px); }
+
+/* ── STAGGER ANIMATIONS ── */
+.anim { opacity:0; transform:translateY(18px); transition:opacity .5s ease, transform .5s ease; }
+.slide.active .anim { opacity:1; transform:translateY(0); }
+.slide.active .anim:nth-child(1) { transition-delay:.05s; }
+.slide.active .anim:nth-child(2) { transition-delay:.15s; }
+.slide.active .anim:nth-child(3) { transition-delay:.25s; }
+.slide.active .anim:nth-child(4) { transition-delay:.35s; }
+.slide.active .anim:nth-child(5) { transition-delay:.45s; }
+.slide.active .anim:nth-child(6) { transition-delay:.55s; }
+
+/* ── SLIDE TAG ── */
+.slide-tag {
+  font-size:11px; font-weight:700; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--green2); margin-bottom:10px;
+}
+
+/* ── TYPOGRAPHY ── */
+h1 { font-size:2.4rem; font-weight:800; line-height:1.15; color:var(--dark); }
+h2 { font-size:1.9rem; font-weight:700; line-height:1.2; color:var(--dark); }
+h3 { font-size:1.15rem; font-weight:600; color:var(--dark); }
+.lead { font-size:1.1rem; color:var(--mid); line-height:1.6; font-weight:400; }
+.highlight { color:var(--green); font-weight:700; }
+
+/* ── CARDS ── */
+.card {
+  background:var(--white); border-radius:14px;
+  box-shadow:var(--shadow); padding:24px 28px;
+}
+
+/* ── FIGURE IMG ── */
+.fig-img {
+  width:100%; max-height:360px; object-fit:contain; border-radius:10px;
+}
+
+/* ─────────────────────────────
+   SLIDE 1 SPECIFICS
+───────────────────────────── */
+.s1-numbers {
+  display:flex; gap:32px; margin:24px 0;
+}
+.s1-num {
+  flex:1; background:var(--white); border-radius:14px;
+  box-shadow:var(--shadow); padding:28px 24px; text-align:center;
+  border-top:4px solid var(--green);
+}
+.s1-num .big { font-size:3.2rem; font-weight:800; color:var(--green); line-height:1; }
+.s1-num .label { font-size:.85rem; color:var(--mid); margin-top:8px; font-weight:500; line-height:1.4; }
+.s1-gap {
+  background:var(--dark); color:var(--white); border-radius:10px;
+  padding:16px 28px; font-size:1.1rem; font-weight:600; text-align:center;
+  margin-top:4px; letter-spacing:.01em;
+}
+.s1-gap span { color:var(--green3); }
+.s1-entities {
+  display:flex; gap:12px; margin-top:20px; flex-wrap:wrap; justify-content:center;
+}
+.entity-badge {
+  background:var(--green4); color:var(--green); border-radius:20px;
+  padding:7px 18px; font-size:.85rem; font-weight:600; border:1.5px solid var(--green3);
+}
+
+/* ─────────────────────────────
+   SLIDE 2 SPECIFICS
+───────────────────────────── */
+.s2-question {
+  background:var(--green4); border-left:5px solid var(--green);
+  border-radius:0 12px 12px 0; padding:18px 24px;
+  font-size:1.25rem; font-weight:600; color:var(--dark); margin-bottom:28px;
+  font-style:italic;
+}
+.flow {
+  display:flex; align-items:center; gap:0; width:100%; margin-bottom:28px;
+}
+.flow-step {
+  flex:1; text-align:center; background:var(--white);
+  border-radius:12px; padding:18px 12px; box-shadow:var(--shadow);
+  position:relative;
+}
+.flow-step .icon { font-size:1.6rem; margin-bottom:6px; }
+.flow-step .step-title { font-size:.8rem; font-weight:700; color:var(--green); text-transform:uppercase; letter-spacing:.07em; }
+.flow-step .step-desc { font-size:.78rem; color:var(--mid); margin-top:4px; line-height:1.35; }
+.flow-arrow {
+  font-size:1.4rem; color:var(--green2); padding:0 6px; flex-shrink:0; font-weight:700;
+}
+.error-table {
+  width:100%; border-collapse:separate; border-spacing:0 8px;
+}
+.error-table th {
+  font-size:.8rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--mid); padding:0 16px 4px; text-align:left;
+}
+.error-table td {
+  padding:12px 16px; background:var(--white); font-size:.9rem;
+  box-shadow:var(--shadow);
+}
+.error-table tr td:first-child { border-radius:10px 0 0 10px; font-weight:600; }
+.error-table tr td:last-child { border-radius:0 10px 10px 0; text-align:right; }
+.err-fn td:first-child { background:var(--red); color:var(--white); }
+.err-fp td:first-child { background:#FEF3C7; color:var(--amber); }
+.cost-red { color:var(--red); font-weight:700; }
+.cost-amber { color:var(--amber); font-weight:700; }
+
+/* ─────────────────────────────
+   SLIDE 3 SPECIFICS
+───────────────────────────── */
+.s3-layout {
+  display:grid; grid-template-columns:1fr 1.6fr; gap:28px; width:100%;
+}
+.sources-list { display:flex; flex-direction:column; gap:12px; }
+.source-item {
+  background:var(--white); border-radius:12px; padding:14px 18px;
+  box-shadow:var(--shadow); display:flex; align-items:center; gap:14px;
+}
+.source-icon { font-size:1.5rem; width:36px; text-align:center; flex-shrink:0; }
+.source-name { font-size:.85rem; font-weight:700; color:var(--dark); }
+.source-desc { font-size:.75rem; color:var(--mid); margin-top:2px; }
+.source-badge {
+  margin-left:auto; font-size:.7rem; font-weight:700; padding:3px 10px;
+  border-radius:10px; flex-shrink:0;
+}
+.badge-green { background:var(--green4); color:var(--green); }
+.badge-amber { background:#FEF3C7; color:var(--amber); }
+.insight-box {
+  background:var(--dark); color:var(--white); border-radius:12px;
+  padding:12px 18px; font-size:.88rem; margin-top:12px; line-height:1.5;
+}
+.insight-box span { color:var(--green3); font-weight:700; }
+
+/* ─────────────────────────────
+   SLIDE 4 SPECIFICS
+───────────────────────────── */
+.s4-layout {
+  display:grid; grid-template-columns:1fr 1fr; gap:28px; width:100%;
+}
+.pu-box {
+  background:var(--dark); color:var(--white); border-radius:14px;
+  padding:22px 24px; display:flex; flex-direction:column; justify-content:center;
+}
+.pu-box .pu-label { font-size:.75rem; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:var(--green3); margin-bottom:8px; }
+.pu-box .pu-text { font-size:1.05rem; line-height:1.5; font-style:italic; }
+.model-table {
+  width:100%; border-collapse:separate; border-spacing:0;
+  background:var(--white); border-radius:12px; overflow:hidden;
+  box-shadow:var(--shadow);
+}
+.model-table th {
+  background:var(--green); color:var(--white);
+  font-size:.78rem; font-weight:700; letter-spacing:.07em; text-transform:uppercase;
+  padding:11px 14px; text-align:left;
+}
+.model-table td { padding:10px 14px; font-size:.88rem; border-bottom:1px solid #F0F4F1; }
+.model-table tr:last-child td { border-bottom:none; }
+.model-table tr.best td { background:var(--green4); font-weight:700; color:var(--green); }
+.auc-bar {
+  display:inline-block; height:10px; border-radius:5px;
+  background:var(--green3); vertical-align:middle; margin-right:6px;
+}
+.auc-bar.best-bar { background:var(--green); }
+.warning-box {
+  background:var(--red-l); border-left:4px solid var(--red);
+  border-radius:0 10px 10px 0; padding:12px 16px; font-size:.85rem;
+  color:var(--dark); margin-top:12px; line-height:1.5;
+}
+.warning-box strong { color:var(--red); }
+
+/* ─────────────────────────────
+   SLIDE 5 SPECIFICS
+───────────────────────────── */
+.s5-layout {
+  display:grid; grid-template-columns:1.4fr 1fr; gap:32px; width:100%;
+  align-items:start;
+}
+.arch-flow {
+  display:flex; flex-direction:column; gap:0;
+}
+.arch-step {
+  background:var(--white); border-radius:12px; padding:14px 18px;
+  box-shadow:var(--shadow); display:flex; align-items:center; gap:14px;
+  position:relative;
+}
+.arch-step::after {
+  content:'↓'; position:absolute; bottom:-18px; left:50%;
+  transform:translateX(-50%); font-size:1rem; color:var(--green2);
+  font-weight:700;
+}
+.arch-step:last-child::after { display:none; }
+.arch-step { margin-bottom:18px; }
+.arch-icon { font-size:1.3rem; width:32px; text-align:center; flex-shrink:0; }
+.arch-name { font-size:.82rem; font-weight:700; color:var(--dark); }
+.arch-tech { font-size:.73rem; color:var(--green2); font-weight:600; margin-top:1px; }
+.arch-desc { font-size:.73rem; color:var(--mid); margin-top:2px; line-height:1.3; }
+.bcr-card {
+  background:var(--green); color:var(--white); border-radius:16px;
+  padding:28px 24px; text-align:center;
+}
+.bcr-big { font-size:4rem; font-weight:800; line-height:1; margin-bottom:6px; }
+.bcr-label { font-size:.9rem; font-weight:500; opacity:.85; }
+.bcr-sub { font-size:.82rem; margin-top:16px; opacity:.75; line-height:1.5; }
+.stats-grid {
+  display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:16px;
+}
+.stat-box {
+  background:rgba(255,255,255,.15); border-radius:10px;
+  padding:12px 14px; text-align:center;
+}
+.stat-box .sv { font-size:1.3rem; font-weight:800; }
+.stat-box .sl { font-size:.72rem; opacity:.8; margin-top:2px; }
+
+/* ─────────────────────────────
+   SLIDE 6 SPECIFICS
+───────────────────────────── */
+.s6-layout {
+  display:grid; grid-template-columns:1fr 1fr; gap:28px; width:100%;
+}
+.checklist { display:flex; flex-direction:column; gap:10px; }
+.check-item {
+  background:var(--white); border-radius:12px; padding:13px 16px;
+  box-shadow:var(--shadow); display:flex; align-items:flex-start; gap:12px;
+  font-size:.88rem;
+}
+.check-icon { font-size:1.1rem; flex-shrink:0; margin-top:1px; }
+.check-text { line-height:1.45; color:var(--dark); }
+.check-text strong { color:var(--green); font-weight:600; }
+.s6-closing {
+  grid-column:1/-1; background:var(--dark); color:var(--white);
+  border-radius:14px; padding:22px 32px; text-align:center;
+  font-size:1.1rem; font-weight:600; line-height:1.6; margin-top:4px;
+}
+.s6-closing span { color:var(--green3); }
+.col-title {
+  font-size:.78rem; font-weight:700; text-transform:uppercase;
+  letter-spacing:.1em; color:var(--green2); margin-bottom:12px;
+  display:flex; align-items:center; gap:8px;
+}
+
+/* Slide title bar */
+.slide-title-bar {
+  width:100%; margin-bottom:22px;
+}
+.slide-title-bar h2 { font-size:1.75rem; }
+.title-line {
+  height:3px; width:60px; background:var(--green); border-radius:2px; margin-top:8px;
+}
+
+/* Responsive full-height constraints */
+.slide { max-width:1200px; margin:0 auto; }
+</style>
+</head>
+<body>
+
+<div id="progress-bar"></div>
+<div id="counter">01 / 07</div>
+<div id="dots">
+  <div class="dot active" onclick="goTo(0)"></div>
+  <div class="dot" onclick="goTo(1)"></div>
+  <div class="dot" onclick="goTo(2)"></div>
+  <div class="dot" onclick="goTo(3)"></div>
+  <div class="dot" onclick="goTo(4)"></div>
+  <div class="dot" onclick="goTo(5)"></div>
+  <div class="dot" onclick="goTo(6)"></div>
+</div>
+<button class="nav-btn" id="btn-prev" onclick="prev()">&#8592;</button>
+<button class="nav-btn" id="btn-next" onclick="next()">&#8594;</button>
+
+
+<!-- ══════════════════════════════════════════
+     SLIDE 0 — VIDEO DE APERTURA
+══════════════════════════════════════════ -->
+<section class="slide active" id="slide-video">
+  <div class="anim" style="text-align:center;margin-bottom:16px;">
+    <span style="font-size:3rem;font-weight:800;color:var(--green);letter-spacing:-.02em;">TerraAlert</span><br>
+    <span style="font-size:.82rem;font-weight:600;color:var(--mid);letter-spacing:.1em;text-transform:uppercase;">Sistema de Predicción de Deslizamientos · Antioquia</span>
+  </div>
+  <div class="anim" style="width:100%;max-width:820px;">
+    <video id="intro-video" width="100%" controls style="border-radius:12px;box-shadow:var(--shadow);">
+      <source src="video/terraalert_intro.mp4" type="video/mp4">
+    </video>
+  </div>
+  <button class="anim" onclick="next()"
+    style="margin-top:20px;padding:10px 28px;border-radius:24px;border:2px solid var(--green);
+      background:transparent;color:var(--green);font-size:.88rem;font-weight:600;
+      cursor:pointer;font-family:inherit;transition:background .2s,color .2s;"
+    onmouseover="this.style.background='var(--green)';this.style.color='#fff'"
+    onmouseout="this.style.background='transparent';this.style.color='var(--green)'"
+    >Saltar video →</button>
+</section>
+
+
+<!-- ══════════════════════════════════════════
+     SLIDE 1 — EL PROBLEMA
+══════════════════════════════════════════ -->
+<section class="slide" id="slide-0">
+  <div class="anim" style="text-align:center;margin-bottom:10px;">
+    <span style="font-size:3rem;font-weight:800;color:var(--green);letter-spacing:-.02em;">TerraAlert</span><br>
+    <span style="font-size:.82rem;font-weight:600;color:var(--mid);letter-spacing:.1em;text-transform:uppercase;">Sistema de Predicción de Deslizamientos · Antioquia</span>
+  </div>
+  <div class="slide-tag anim">El problema</div>
+  <h1 class="anim" style="max-width:700px;text-align:center;margin-bottom:6px;">
+    Antioquia tiene un problema que <span class="highlight">los datos pueden resolver</span>
+  </h1>
+  <div class="s1-numbers anim">
+    <div class="s1-num">
+      <div class="big">945</div>
+      <div class="label">deslizamientos<br>2019 – 2022</div>
+    </div>
+    <div class="s1-num">
+      <div class="big">115</div>
+      <div class="label">personas<br>fallecidas</div>
+    </div>
+    <div class="s1-num">
+      <div class="big">56.353</div>
+      <div class="label">personas<br>afectadas</div>
+    </div>
+    <div class="s1-num" style="border-top-color:#C0392B;">
+      <div class="big" style="color:#C0392B;">$210B</div>
+      <div class="label">COP en daños<br>directos</div>
+    </div>
+  </div>
+  <div class="s1-gap anim">
+    Ninguno fue anticipado con datos — solo se supo <span>después de que ocurrió</span>
+  </div>
+  <div class="anim" style="margin-top:14px;font-size:.88rem;color:var(--mid);text-align:center;font-weight:500;">
+    Usuarios del sistema:
+  </div>
+  <div class="s1-entities anim">
+    <div class="entity-badge">DAGRD</div>
+    <div class="entity-badge">DAPARD</div>
+    <div class="entity-badge">Defensa Civil</div>
+    <div class="entity-badge">Alcaldías municipales</div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════
+     SLIDE 2 — HIPÓTESIS Y ENFOQUE
+══════════════════════════════════════════ -->
+<section class="slide" id="slide-1">
+  <div class="slide-title-bar anim">
+    <div class="slide-tag">La hipótesis</div>
+    <h2>Del dato meteorológico a la alerta temprana</h2>
+    <div class="title-line"></div>
+  </div>
+
+  <div class="s2-question anim">
+    ¿Puede la precipitación acumulada de las últimas dos semanas predecir un deslizamiento la semana siguiente, a nivel de cuenca hidrográfica?
+  </div>
+
+  <div class="flow anim">
+    <div class="flow-step">
+      <div class="icon">🌧️</div>
+      <div class="step-title">Precipitación</div>
+      <div class="step-desc">CHIRPS v2.0<br>14 días previos<br>5.5 km resolución</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">
+      <div class="icon">🧠</div>
+      <div class="step-title">Modelo ML</div>
+      <div class="step-desc">BaggingPU<br>549 cuencas<br>semana × cuenca</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">
+      <div class="icon">📊</div>
+      <div class="step-title">Estimación</div>
+      <div class="step-desc">¿Ocurrirá evento<br>la semana W+1?<br>por cuenca</div>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-step">
+      <div class="icon">🔔</div>
+      <div class="step-title">Predicción</div>
+      <div class="step-desc">¿Ocurre evento?<br>Sí / No · 7 días<br>DAGRD actúa</div>
+    </div>
+  </div>
+
+  <div style="width:100%" class="anim">
+    <table class="error-table">
+      <thead>
+        <tr>
+          <th>Tipo de error</th>
+          <th>¿Qué ocurre?</th>
+          <th>Consecuencia operativa</th>
+          <th>Costo estimado</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="err-fn">
+          <td>Falso Negativo</td>
+          <td>Evento real no alertado</td>
+          <td>Sin preparación → víctimas y daños totales</td>
+          <td class="cost-red">~$222M COP + vidas</td>
+        </tr>
+        <tr class="err-fp">
+          <td style="font-weight:600;color:var(--amber);">Falsa Alarma</td>
+          <td>Alerta sin evento real</td>
+          <td>Movilización preventiva innecesaria</td>
+          <td class="cost-amber">~$5M COP</td>
+        </tr>
+      </tbody>
+    </table>
+    <div style="font-size:.78rem;color:var(--mid);margin-top:8px;text-align:right;">
+      El costo asimétrico (44×) justifica optimizar recall sobre precisión.
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════
+     SLIDE 3 — DATOS Y DESAFÍO TÉCNICO
+══════════════════════════════════════════ -->
+<section class="slide" id="slide-2">
+  <div class="slide-title-bar anim">
+    <div class="slide-tag">Los datos</div>
+    <h2>Señal predecible — si se usan los datos correctos</h2>
+    <div class="title-line"></div>
+  </div>
+
+  <div class="s3-layout anim">
+    <div>
+      <div class="sources-list">
+        <div class="source-item">
+          <div class="source-icon">🛰️</div>
+          <div>
+            <div class="source-name">CHIRPS v2.0 — NASA/USGS</div>
+            <div class="source-desc">Precipitación diaria satelital · 5.5 km · 100% cobertura Antioquia</div>
+          </div>
+          <div class="source-badge badge-green">Principal</div>
+        </div>
+        <div class="source-item">
+          <div class="source-icon">⚠️</div>
+          <div>
+            <div class="source-name">UNGRD — Emergencias</div>
+            <div class="source-desc">945 eventos deslizamiento confirmados · 2019-2022 · Variable de respuesta</div>
+          </div>
+          <div class="source-badge badge-green">Target</div>
+        </div>
+        <div class="source-item">
+          <div class="source-icon">🗺️</div>
+          <div>
+            <div class="source-name">HydroBASINS L10</div>
+            <div class="source-desc">549 cuencas hidrográficas · Unidad espacial coherente</div>
+          </div>
+          <div class="source-badge badge-green">Espacial</div>
+        </div>
+        <div class="source-item">
+          <div class="source-icon">📡</div>
+          <div>
+            <div class="source-name">IDEAM — Estaciones in-situ</div>
+            <div class="source-desc">~3.4% cobertura departamental · Señal demasiado dispersa</div>
+          </div>
+          <div class="source-badge badge-amber">Descartado</div>
+        </div>
+      </div>
+      <div class="insight-box" style="margin-top:14px;">
+        Cambiar de IDEAM a CHIRPS pasó el AUC de <span>0.55</span> (azar) a <span>0.61</span> (señal real) — sin cambiar el modelo.
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px;">
+
+  <!-- Tarjeta: distribución espacial -->
+  <div style="background:#f0faf4;border:1px solid #52B788;border-radius:10px;padding:16px 18px;">
+    <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#2D6A4F;margin-bottom:10px;">Distribución espacial · 549 cuencas</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <div style="text-align:center;">
+        <div style="font-size:2rem;font-weight:800;color:#2D6A4F;line-height:1;">91/549</div>
+        <div style="font-size:.7rem;color:#555;margin-top:3px;">cuencas concentran<br>el mayor riesgo</div>
+      </div>
+      <div style="text-align:center;">
+        <div style="font-size:2rem;font-weight:800;color:#C0392B;line-height:1;">16.6%</div>
+        <div style="font-size:.7rem;color:#555;margin-top:3px;">de cuencas con<br>al menos 1 evento</div>
+      </div>
+    </div>
+    <div style="margin-top:10px;font-size:.72rem;color:#555;line-height:1.5;border-top:1px solid #d4edda;padding-top:8px;">
+      Cuenca más afectada: <strong style="color:#2D6A4F;">HYBAS 6100996770 · 37 eventos</strong><br>
+      Concentración: Valle de Aburrá y suroeste antioqueño
+    </div>
+  </div>
+
+  <!-- Tarjeta: estacionalidad -->
+  <div style="background:#f0faf4;border:1px solid #52B788;border-radius:10px;padding:16px 18px;">
+    <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#2D6A4F;margin-bottom:10px;">Estacionalidad · patrón bimodal</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px;">
+      <div style="background:#2D6A4F;border-radius:6px;padding:10px;text-align:center;">
+        <div style="font-size:1rem;font-weight:700;color:#fff;">Temporada 1</div>
+        <div style="font-size:.85rem;color:#a8f0c6;margin-top:2px;">Mar – May</div>
+        <div style="font-size:1.4rem;font-weight:800;color:#fff;margin-top:4px;">294</div>
+        <div style="font-size:.65rem;color:#a8f0c6;">eventos</div>
+      </div>
+      <div style="background:#2D6A4F;border-radius:6px;padding:10px;text-align:center;">
+        <div style="font-size:1rem;font-weight:700;color:#fff;">Temporada 2</div>
+        <div style="font-size:.85rem;color:#a8f0c6;margin-top:2px;">Sep – Nov</div>
+        <div style="font-size:1.4rem;font-weight:800;color:#fff;margin-top:4px;">260</div>
+        <div style="font-size:.65rem;color:#a8f0c6;">eventos</div>
+      </div>
+    </div>
+    <div style="font-size:.72rem;color:#555;line-height:1.4;">
+      Pico máximo: <strong style="color:#C0392B;">junio · 153 eventos</strong> ·
+      Señal estacional explotable por el modelo
+    </div>
+  </div>
+
+  <!-- Tarjeta: cobertura sensores -->
+  <div style="background:#fff8f0;border:1px solid #f0a500;border-radius:10px;padding:12px 18px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <div>
+        <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#b07d00;margin-bottom:4px;">Cobertura de sensores</div>
+        <div style="font-size:.78rem;color:#555;">IDEAM in-situ vs CHIRPS satelital</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:1.6rem;font-weight:800;color:#C0392B;line-height:1;">3.4%</div>
+        <div style="font-size:.65rem;color:#555;">IDEAM · descartado</div>
+      </div>
+    </div>
+    <div style="margin-top:8px;background:#2D6A4F;border-radius:6px;padding:6px 12px;text-align:center;">
+      <span style="font-size:.82rem;font-weight:700;color:#fff;">CHIRPS: 100% cobertura diaria · 5.5 km</span>
+    </div>
+  </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════
+     SLIDE 4 — MODELO Y DECISIONES
+══════════════════════════════════════════ -->
+<section class="slide" id="slide-3">
+  <div class="slide-title-bar anim">
+    <div class="slide-tag">El modelo</div>
+    <h2>PU-Learning: modelar lo que no se reporta</h2>
+    <div class="title-line"></div>
+  </div>
+
+  <div class="s4-layout anim">
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div class="pu-box">
+        <div class="pu-label">Por qué PU-Learning</div>
+        <div class="pu-text">
+          "Los registros UNGRD son positivos confirmados,<br>
+          pero los no-reportes <strong style="color:var(--green3);">no son ausencias confirmadas</strong> —<br>
+          pueden ser eventos no documentados en zonas remotas."
+        </div>
+      </div>
+
+      <table class="model-table">
+        <thead>
+          <tr>
+            <th>Modelo</th>
+            <th>AUC real<br><span style="font-weight:400;text-transform:none;letter-spacing:0;">(grid completo)</span></th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>DummyClassifier</td>
+            <td>0.502</td>
+            <td><span class="auc-bar" style="width:30px"></span> azar</td>
+          </tr>
+          <tr>
+            <td>Logistic Regression</td>
+            <td>0.569</td>
+            <td><span class="auc-bar" style="width:50px"></span></td>
+          </tr>
+          <tr>
+            <td>Random Forest</td>
+            <td>0.582</td>
+            <td><span class="auc-bar" style="width:60px"></span></td>
+          </tr>
+          <tr class="best">
+            <td>BaggingPuClassifier ✓</td>
+            <td>0.609</td>
+            <td><span class="auc-bar best-bar" style="width:80px"></span> seleccionado</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="warning-box">
+        <strong>El AUC 0.99 que nadie debería creer:</strong> el CV interno sobre pseudo-ausencias reportó 0.99 para todos los modelos. Evaluado sobre el grid real (114,741 instancias), el mejor modelo da 0.609. El dataset artificialmente separable creaba una ilusión de rendimiento perfecto.
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:12px;">
+
+  <!-- Tarjeta: métricas reales -->
+  <div style="background:#f0faf4;border:1px solid #52B788;border-radius:10px;padding:16px 18px;">
+    <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#2D6A4F;margin-bottom:12px;">Métricas reales · grid completo · 114,741 instancias</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+      <div style="text-align:center;padding:10px;background:#2D6A4F;border-radius:8px;">
+        <div style="font-size:1.8rem;font-weight:800;color:#fff;line-height:1;">0.609</div>
+        <div style="font-size:.68rem;color:#a8f0c6;margin-top:3px;">AUC-ROC real</div>
+        <div style="font-size:.65rem;color:#a8f0c6;">(no pseudo-ausencias)</div>
+      </div>
+      <div style="text-align:center;padding:10px;background:#2D6A4F;border-radius:8px;">
+        <div style="font-size:1.8rem;font-weight:800;color:#fff;line-height:1;">97.3%</div>
+        <div style="font-size:.68rem;color:#a8f0c6;margin-top:3px;">Recall real</div>
+        <div style="font-size:.65rem;color:#a8f0c6;">917 de 945 detectados</div>
+      </div>
+      <div style="text-align:center;padding:10px;background:#fff3cd;border:1px solid #ffc107;border-radius:8px;">
+        <div style="font-size:1.8rem;font-weight:800;color:#856404;line-height:1;">0.6%</div>
+        <div style="font-size:.68rem;color:#856404;margin-top:3px;">Precisión real</div>
+        <div style="font-size:.65rem;color:#856404;">tasa base: 0.4%</div>
+      </div>
+      <div style="text-align:center;padding:10px;background:#fff3cd;border:1px solid #ffc107;border-radius:8px;">
+        <div style="font-size:1.8rem;font-weight:800;color:#856404;line-height:1;">0.4%</div>
+        <div style="font-size:.68rem;color:#856404;margin-top:3px;">Tasa base positivos</div>
+        <div style="font-size:.65rem;color:#856404;">grid completo</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tarjeta: costo asimétrico -->
+  <div style="background:#f8f9fa;border:1px solid #dee2e6;border-radius:10px;padding:14px 18px;">
+    <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#444;margin-bottom:10px;">¿Por qué optimizar Recall sobre Precisión?</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+      <div style="background:#eafaf1;border-left:3px solid #2D6A4F;padding:8px 10px;border-radius:0 6px 6px 0;">
+        <div style="font-size:.72rem;font-weight:700;color:#2D6A4F;">Falso Positivo</div>
+        <div style="font-size:.68rem;color:#555;margin-top:3px;">Alerta sin evento real</div>
+        <div style="font-size:.72rem;color:#2D6A4F;margin-top:4px;font-weight:600;">Costo operativo<br>— aceptable</div>
+      </div>
+      <div style="background:#fdf2f2;border-left:3px solid #C0392B;padding:8px 10px;border-radius:0 6px 6px 0;">
+        <div style="font-size:.72rem;font-weight:700;color:#C0392B;">Falso Negativo</div>
+        <div style="font-size:.68rem;color:#555;margin-top:3px;">Evento sin alerta</div>
+        <div style="font-size:.72rem;color:#C0392B;margin-top:4px;font-weight:600;">Vidas + infraestructura<br>— inaceptable</div>
+      </div>
+    </div>
+    <div style="margin-top:8px;font-size:.72rem;color:#555;text-align:center;font-style:italic;">
+      El umbral lo calibra el DAGRD según su capacidad operativa — no el algoritmo
+    </div>
+  </div>
+
+  <!-- Tarjeta: AUC 0.99 falso -->
+  <div style="background:#fdf2f2;border:1px solid #e74c3c;border-radius:10px;padding:12px 18px;">
+    <div style="font-size:.72rem;font-weight:700;color:#C0392B;margin-bottom:6px;">&#9888; AUC 0.99 sobre pseudo-ausencias — no válido</div>
+    <div style="font-size:.72rem;color:#555;line-height:1.5;">
+      CV interno inflado por diseño del dataset. Sobre el grid completo real
+      el AUC cae de <strong>0.99 → 0.609</strong>. La evaluación honesta
+      siempre sobre las <strong>114,741 instancias reales.</strong>
+    </div>
+  </div>
+
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════
+     SLIDE 5 — ARQUITECTURA Y STACK
+══════════════════════════════════════════ -->
+<section class="slide" id="slide-4">
+  <div class="slide-title-bar anim">
+    <div class="slide-tag">El sistema</div>
+    <h2>Pipeline completo y autónomo cada semana</h2>
+    <div class="title-line"></div>
+  </div>
+
+  <div class="s5-layout anim">
+    <div class="arch-flow">
+      <div class="arch-step">
+        <div class="arch-icon">💧</div>
+        <div>
+          <div class="arch-name">Ingesta de datos</div>
+          <div class="arch-tech">CHIRPS + UNGRD + HydroBASINS</div>
+          <div class="arch-desc">Descarga automática cada lunes 5:00 AM</div>
+        </div>
+      </div>
+      <div class="arch-step">
+        <div class="arch-icon">⚙️</div>
+        <div>
+          <div class="arch-name">ETL &amp; Feature Engineering</div>
+          <div class="arch-tech">Prefect 3.x · Python · Anti-leakage shift(1)</div>
+          <div class="arch-desc">114,741 instancias · 13 features · quality gate</div>
+        </div>
+      </div>
+      <div class="arch-step">
+        <div class="arch-icon">🧠</div>
+        <div>
+          <div class="arch-name">Entrenamiento &amp; Registro</div>
+          <div class="arch-tech">scikit-learn · MLflow Registry · SQLite</div>
+          <div class="arch-desc">Evaluación honesta en grid completo · Staging automático si AUC ≥ 0.60</div>
+        </div>
+      </div>
+      <div class="arch-step">
+        <div class="arch-icon">🚀</div>
+        <div>
+          <div class="arch-name">API &amp; Predicciones</div>
+          <div class="arch-tech">FastAPI · Docker · 10 endpoints REST</div>
+          <div class="arch-desc">Predicción semanal · drift monitoring KS-test · logs JSONL</div>
+        </div>
+      </div>
+      <div class="arch-step">
+        <div class="arch-icon">🖥️</div>
+        <div>
+          <div class="arch-name">Dashboard Mesa Técnica</div>
+          <div class="arch-tech">React 18 · TypeScript · Leaflet · CI/CD GitHub Actions</div>
+          <div class="arch-desc">23 tests unitarios · ruff · despliegue automático</div>
+        </div>
+      </div>
+    </div>
+
+        <div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--mid);margin-bottom:4px;">Impacto económico · estrategia de priorización</div>
+
+      <div style="background:var(--red-l);border:2px solid var(--red);border-radius:12px;padding:16px 18px;">
+        <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--red);margin-bottom:6px;">549 cuencas — alertar todo Antioquia</div>
+        <div style="font-size:2.3rem;font-weight:800;color:var(--red);line-height:1;">−0.89×</div>
+        <div style="font-size:.75rem;color:var(--mid);margin-top:5px;line-height:1.4;">152,413 falsas alarmas · costos 62,100M COP<br><strong style="color:var(--red);">No viable — costos superan beneficios</strong></div>
+      </div>
+
+      <div style="background:var(--green4);border:2px solid var(--green2);border-radius:12px;padding:16px 18px;">
+        <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--green2);margin-bottom:6px;">Top-91 cuencas de mayor riesgo</div>
+        <div style="font-size:2.3rem;font-weight:800;color:var(--green);line-height:1;">54×</div>
+        <div style="font-size:.75rem;color:var(--mid);margin-top:5px;line-height:1.4;">Recall 33% cuencas históricas · costo operativo 00M COP<br><strong style="color:var(--green);">Viable · recomendado operativo</strong></div>
+      </div>
+
+      <div style="background:var(--green4);border:1.5px solid var(--green3);border-radius:12px;padding:16px 18px;">
+        <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--green2);margin-bottom:6px;">Top-200 cuencas de mayor riesgo</div>
+        <div style="font-size:2.3rem;font-weight:800;color:var(--green);line-height:1;">69×</div>
+        <div style="font-size:.75rem;color:var(--mid);margin-top:5px;line-height:1.4;">Recall 72.5% cuencas históricas · BCR óptimo económico<br><strong style="color:var(--green);">Óptimo económico</strong></div>
+      </div>
+
+      <div style="background:var(--dark);color:#fff;border-radius:10px;padding:11px 14px;font-size:.76rem;font-weight:600;text-align:center;line-height:1.5;">
+        Recall: <span style="color:var(--green3);">97%</span> · Precisión real: <span style="color:var(--green3);">0.6%</span> · 917 de 945 eventos detectables
+      </div>
+    </div>
+  </div>
+</section>
+
+
+<!-- ══════════════════════════════════════════
+     SLIDE 6 — CIERRE E IMPACTO
+══════════════════════════════════════════ -->
+<section class="slide" id="slide-5">
+  <div class="slide-title-bar anim">
+    <div class="slide-tag">Impacto</div>
+    <h2>TerraAlert — Del dato al impacto en gestión del riesgo</h2>
+    <div class="title-line"></div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:28px;width:100%;align-items:start;" class="anim">
+    <div>
+      <div class="col-title">Lo que TerraAlert demuestra</div>
+      <div class="checklist">
+        <div class="check-item">
+          <div class="check-icon">✅</div>
+          <div class="check-text"><strong>La señal existe</strong> — CHIRPS predice deslizamientos con AUC 0.609 sobre 114.741 instancias reales del grid de Antioquia</div>
+        </div>
+        <div class="check-item">
+          <div class="check-icon">✅</div>
+          <div class="check-text"><strong>Pipeline autónomo operacional</strong> — ETL semanal, MLflow Registry, API REST y dashboard funcionan sin intervención manual</div>
+        </div>
+        <div class="check-item">
+          <div class="check-icon">✅</div>
+          <div class="check-text"><strong>97% de recall real</strong> — 9 de cada 10 deslizamientos habrían generado una alerta con 7 días de anticipación</div>
+        </div>
+        <div class="check-item">
+          <div class="check-icon">✅</div>
+          <div class="check-text"><strong>Stack MLOps profesional</strong> — Docker, CI/CD, 23 tests, monitoreo de drift KS-test, logs auditables</div>
+        </div>
+        <div class="check-item">
+          <div class="check-icon">✅</div>
+          <div class="check-text"><strong>Análisis de impacto riguroso</strong> — $210B COP en daños documentados, economía del error cuantificada con métricas reales</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="s1-num">
+          <div class="big">945</div>
+          <div class="label">eventos<br>modelados</div>
+        </div>
+        <div class="s1-num" style="border-top-color:#C0392B;">
+          <div class="big" style="color:#C0392B;">$210B</div>
+          <div class="label">COP en daños<br>documentados</div>
+        </div>
+        <div class="s1-num">
+          <div class="big">97%</div>
+          <div class="label">recall real<br>grid completo</div>
+        </div>
+        <div class="s1-num">
+          <div class="big">7 días</div>
+          <div class="label">anticipación<br>para DAGRD</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="s6-closing anim" style="margin-top:18px;">
+    Antioquia tiene <span>945 razones documentadas</span> para anticipar el próximo deslizamiento.<br>
+    TerraAlert convierte esa urgencia en <span>código, datos y alertas tempranas</span>.
+  </div>
+</section>
+
+
+<script>
+let current = 0;
+const total  = 7;
+const slides = document.querySelectorAll('.slide');
+const dots   = document.querySelectorAll('.dot');
+const bar    = document.getElementById('progress-bar');
+const ctr    = document.getElementById('counter');
+
+function pad(n) { return String(n).padStart(2,'0'); }
+
+function goTo(idx, dir) {
+  if (idx < 0 || idx >= total || idx === current) return;
+
+  // Remove exit classes
+  slides[current].classList.remove('active','exit-left','exit-right');
+  dots[current].classList.remove('active');
+
+  // Add exit class
+  const goForward = (dir !== undefined) ? dir > 0 : idx > current;
+  slides[current].classList.add(goForward ? 'exit-left' : 'exit-right');
+
+  // Cleanup after transition
+  const exiting = slides[current];
+  setTimeout(() => exiting.classList.remove('exit-left','exit-right'), 500);
+
+  current = idx;
+
+  // Activate new slide (reset anim elements briefly so they re-trigger)
+  slides[current].querySelectorAll('.anim').forEach(el => {
+    el.style.opacity = '0';
+    el.style.transform = 'translateY(18px)';
+  });
+
+  slides[current].classList.add('active');
+  dots[current].classList.add('active');
+  bar.style.width = `${(current + 1) / total * 100}%`;
+  ctr.textContent = `${pad(current + 1)} / ${pad(total)}`;
+
+  // Trigger animations on next frame
+  requestAnimationFrame(() => {
+    slides[current].querySelectorAll('.anim').forEach(el => {
+      el.style.opacity = '';
+      el.style.transform = '';
+    });
+  });
+}
+
+function next() { goTo(current + 1, 1); }
+function prev() { goTo(current - 1, -1); }
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') { e.preventDefault(); next(); }
+  if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')                     { e.preventDefault(); prev(); }
+});
+
+// Touch/swipe support
+let touchX = null;
+document.addEventListener('touchstart', e => { touchX = e.touches[0].clientX; });
+document.addEventListener('touchend',   e => {
+  if (touchX === null) return;
+  const dx = e.changedTouches[0].clientX - touchX;
+  if (Math.abs(dx) > 50) dx < 0 ? next() : prev();
+  touchX = null;
+});
+</script>
+
+</body>
+</html>
